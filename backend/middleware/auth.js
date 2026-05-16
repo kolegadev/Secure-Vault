@@ -153,7 +153,7 @@ export async function loginHandler(req, res) {
     logger.warn({ ip: req.ip }, 'Failed login attempt');
     return res.status(401).json({
       success: false,
-      error: { code: 'INVALID_PASSPHRASE', message: unlockResult.message },
+      error: { code: 'INVALID_PASSPHRASE', message: 'Authentication failed. Please check your passphrase and try again.' },
     });
   }
 
