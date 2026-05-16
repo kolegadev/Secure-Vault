@@ -156,30 +156,41 @@ export async function installSkill(skillId) {
     return { success: false, message: 'Skill not found' };
   }
 
+  // Validate that the skill path is within the expected skills directory
+  const skillsDir = path.resolve(path.join(config.luks.mountPoint, config.paths.skillsDir));
+  const resolvedSkillPath = path.resolve(skill.path);
+  
+  if (!resolvedSkillPath.startsWith(skillsDir + path.sep) && resolvedSkillPath !== skillsDir) {
+    logger.error({ skillPath: skill.path, skillsDir }, 'Skill path is outside of allowed directory');
+    return { success: false, message: 'Invalid skill path: outside of allowed directory' };
+  }
+
+  // Ensure the skill file exists and is a regular file
+  try {
+    const stat = fs.lstatSync(resolvedSkillPath);
+    if (!stat.isFile() || stat.isSymbolicLink()) {
+      return { success: false, message: 'Invalid skill: not a regular file' };
+    }
+  } catch (error) {
+    return { success: false, message: 'Skill file not found or inaccessible' };
+  }
+
   const openclawDir = path.join(process.env.HOME || '/root', '.openclaw', 'skills');
   if (!fs.existsSync(openclawDir)) {
     fs.mkdirSync(openclawDir, { recursive: true });
   }
 
-  const targetPath = path.join(openclawDir, path.basename(path.dirname(skill.path)));
+  const targetPath = path.join(openclawDir, path.basename(path.dirname(resolvedSkillPath)));
 
   try {
-    // Create symlink
-    fs.symlinkSync(skill.path, targetPath, 'file');
+    // Use hard copy instead of symlink for better security isolation
+    fs.copyFileSync(resolvedSkillPath, targetPath);
     db.prepare('UPDATE skills SET installed_at = CURRENT_TIMESTAMP WHERE id = ?').run(skillId);
     logger.info({ skillId, targetPath }, 'Skill installed');
     return { success: true, message: 'Skill installed successfully' };
   } catch (error) {
-    // If symlink fails, try copy
-    try {
-      fs.copyFileSync(skill.path, targetPath);
-      db.prepare('UPDATE skills SET installed_at = CURRENT_TIMESTAMP WHERE id = ?').run(skillId);
-      logger.info({ skillId, targetPath }, 'Skill copied');
-      return { success: true, message: 'Skill copied successfully' };
-    } catch (copyError) {
-      logger.error({ error: copyError }, 'Skill install failed');
-      return { success: false, message: `Install failed: ${copyError.message}` };
-    }
+    logger.error({ error }, 'Skill install failed');
+    return { success: false, message: `Install failed: ${error.message}` };
   }
 }
 
@@ -196,17 +207,21 @@ export async function uninstallSkill(skillId) {
     return { success: false, message: 'Skill not found' };
   }
 
+  // Validate that the skill path is within the expected skills directory
+  const skillsDir = path.resolve(path.join(config.luks.mountPoint, config.paths.skillsDir));
+  const resolvedSkillPath = path.resolve(skill.path);
+  
+  if (!resolvedSkillPath.startsWith(skillsDir + path.sep) && resolvedSkillPath !== skillsDir) {
+    logger.error({ skillPath: skill.path, skillsDir }, 'Skill path is outside of allowed directory');
+    return { success: false, message: 'Invalid skill path: outside of allowed directory' };
+  }
+
   const openclawDir = path.join(process.env.HOME || '/root', '.openclaw', 'skills');
-  const targetPath = path.join(openclawDir, path.basename(path.dirname(skill.path)));
+  const targetPath = path.join(openclawDir, path.basename(path.dirname(resolvedSkillPath)));
 
   try {
     if (fs.existsSync(targetPath)) {
-      const stat = fs.lstatSync(targetPath);
-      if (stat.isSymbolicLink()) {
-        fs.unlinkSync(targetPath);
-      } else {
-        fs.unlinkSync(targetPath);
-      }
+      fs.unlinkSync(targetPath);
     }
 
     db.prepare('UPDATE skills SET installed_at = NULL WHERE id = ?').run(skillId);
