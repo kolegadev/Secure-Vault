@@ -36,7 +36,7 @@ router.post('/create', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/unlock', async (req, res, next) => {
+router.post('/unlock', requireAuth, async (req, res, next) => {
   try {
     const { passphrase } = req.body;
     if (!passphrase) {
