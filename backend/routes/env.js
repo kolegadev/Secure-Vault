@@ -207,11 +207,39 @@ router.post('/bulk-delete', requireAuth, requireVaultMounted, (req, res, next) =
       return res.status(400).json({ success: false, error: { code: 'MISSING_IDS', message: 'Array of ids required' } });
     }
 
-    const placeholders = ids.map(() => '?').join(',');
-    const result = db.prepare(`DELETE FROM env_vars WHERE id IN (${placeholders})`).run(...ids);
+    // Limit bulk operation size to prevent resource exhaustion
+    const MAX_BULK_SIZE = 100;
+    if (ids.length > MAX_BULK_SIZE) {
+      return res.status(400).json({ 
+        success: false, 
+        error: { 
+          code: 'BULK_LIMIT_EXCEEDED', 
+          message: `Maximum ${MAX_BULK_SIZE} items allowed in bulk operations` 
+        } 
+      });
+    }
+
+    // Validate each ID format to prevent injection and ensure data integrity
+    const validIds = [];
+    for (const id of ids) {
+      // Check if ID is a positive integer
+      if (!Number.isInteger(Number(id)) || Number(id) <= 0) {
+        return res.status(400).json({ 
+          success: false, 
+          error: { 
+            code: 'INVALID_ID', 
+            message: `Invalid ID format: ${id}` 
+          } 
+        });
+      }
+      validIds.push(Number(id));
+    }
+
+    const placeholders = validIds.map(() => '?').join(',');
+    const result = db.prepare(`DELETE FROM env_vars WHERE id IN (${placeholders})`).run(...validIds);
     syncEnvFile();
-    logActivity('BULK_DELETE', null, { count: result.changes });
-    logger.info({ count: result.changes }, 'Env vars bulk deleted');
+    logActivity('BULK_DELETE', null, { count: result.changes, requestedCount: validIds.length });
+    logger.info({ count: result.changes, requestedCount: validIds.length }, 'Env vars bulk deleted');
 
     res.json({ success: true, data: { deleted: result.changes } });
   } catch (err) {
@@ -228,8 +256,36 @@ router.post('/export', requireAuth, requireVaultMounted, (req, res, next) => {
     const params = [];
 
     if (ids && ids.length > 0) {
-      sql += ` AND id IN (${ids.map(() => '?').join(',')})`;
-      params.push(...ids);
+      // Limit bulk operation size to prevent resource exhaustion
+      const MAX_BULK_SIZE = 100;
+      if (ids.length > MAX_BULK_SIZE) {
+        return res.status(400).json({ 
+          success: false, 
+          error: { 
+            code: 'BULK_LIMIT_EXCEEDED', 
+            message: `Maximum ${MAX_BULK_SIZE} items allowed in bulk operations` 
+          } 
+        });
+      }
+
+      // Validate each ID format to prevent injection and ensure data integrity
+      const validIds = [];
+      for (const id of ids) {
+        // Check if ID is a positive integer
+        if (!Number.isInteger(Number(id)) || Number(id) <= 0) {
+          return res.status(400).json({ 
+            success: false, 
+            error: { 
+              code: 'INVALID_ID', 
+              message: `Invalid ID format: ${id}` 
+            } 
+          });
+        }
+        validIds.push(Number(id));
+      }
+
+      sql += ` AND id IN (${validIds.map(() => '?').join(',')})`;
+      params.push(...validIds);
     }
     if (service_name) {
       sql += ' AND service_name = ?';
