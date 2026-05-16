@@ -1,0 +1,102 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'DM Sans', system-ui, sans-serif;
+    background-color: #0a0a0f;
+    color: #e8e8ef;
+  }
+
+  body {
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background-color: rgba(0, 212, 170, 0.3);
+    color: #e8e8ef;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #14141b;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #2a2a35;
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3a3a45;
+  }
+}
+
+@layer components {
+  .vault-card {
+    @apply bg-vault-surface border border-vault-border rounded-lg;
+  }
+
+  .vault-input {
+    @apply bg-vault-bg border border-vault-border rounded-md px-3 py-2 text-vault-text
+           placeholder:text-vault-textMuted focus:outline-none focus:border-vault-primary
+           focus:ring-1 focus:ring-vault-primary/30 transition-all;
+  }
+
+  .vault-btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md font-medium
+           transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
+  }
+
+  .vault-btn-primary {
+    @apply vault-btn bg-vault-primary text-vault-bg hover:bg-vault-primaryHover;
+  }
+
+  .vault-btn-danger {
+    @apply vault-btn bg-vault-danger text-white hover:brightness-110;
+  }
+
+  .vault-btn-ghost {
+    @apply vault-btn text-vault-textSecondary hover:text-vault-text hover:bg-vault-surfaceHighlight;
+  }
+
+  .vault-table {
+    @apply w-full text-left border-collapse;
+  }
+
+  .vault-table th {
+    @apply px-4 py-3 text-xs font-semibold uppercase tracking-wider text-vault-textSecondary
+           border-b border-vault-border bg-vault-surface;
+  }
+
+  .vault-table td {
+    @apply px-4 py-3 border-b border-vault-border text-sm;
+  }
+
+  .vault-table tr:hover td {
+    @apply bg-vault-surfaceHighlight;
+  }
+
+  .vault-badge {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .vault-badge-green {
+    @apply vault-badge bg-vault-primaryMuted text-vault-primary;
+  }
+
+  .vault-badge-red {
+    @apply vault-badge bg-vault-dangerMuted text-vault-danger;
+  }
+
+  .vault-badge-amber {
+    @apply vault-badge bg-amber-500/15 text-amber-400;
+  }
+}

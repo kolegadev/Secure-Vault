@@ -1,0 +1,31 @@
+{
+  "app": {
+    "name": "OpenClaw Secure Vault",
+    "version": "1.0.0"
+  },
+  "server": {
+    "port": 3001,
+    "host": "0.0.0.0"
+  },
+  "security": {
+    "sessionTtlMinutes": 30,
+    "csrfEnabled": true,
+    "corsOrigin": "http://localhost:5173"
+  },
+  "luks": {
+    "devicePath": "/dev/sdb1",
+    "mountPoint": "/mnt/openclaw-vault",
+    "mapperName": "openclaw-vault",
+    "filesystem": "ext4"
+  },
+  "usb": {
+    "pollIntervalMs": 2000
+  },
+  "paths": {
+    "vaultDb": "vault.db",
+    "envDir": "env",
+    "skillsDir": "skills",
+    "servicesDir": "services",
+    "exportsDir": "exports"
+  }
+}
