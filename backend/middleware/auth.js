@@ -4,6 +4,22 @@ import { logger } from '../utils/logger.js';
 import { config } from '../config/index.js';
 import { unlockDevice, getStatus } from '../services/luksManager.js';
 
+/**
+ * Determine if cookies should use the secure flag.
+ * Checks for HTTPS protocol or explicit configuration.
+ * @param {import('express').Request} req
+ * @returns {boolean}
+ */
+function shouldUseSecureCookies(req) {
+  // Check if explicitly configured
+  if (typeof config.security.secureCookies === 'boolean') {
+    return config.security.secureCookies;
+  }
+
+  // Auto-detect based on protocol
+  return req.protocol === 'https' || req.get('X-Forwarded-Proto') === 'https';
+}
+
 const SESSION_COOKIE = 'vault_session';
 
 /**
@@ -20,10 +36,11 @@ function redactSessionId(sessionId) {
 
 /**
  * Create a new session after successful LUKS unlock.
+ * @param {import('express').Request} req
  * @param {import('express').Response} res
  * @returns {string} sessionId
  */
-export function createSession(res) {
+export function createSession(req, res) {
   const db = getDatabase();
   const sessionId = nanoid();
   const expiresAt = new Date(Date.now() + config.security.sessionTtlMinutes * 60 * 1000).toISOString();
@@ -33,7 +50,7 @@ export function createSession(res) {
 
   res.cookie(SESSION_COOKIE, sessionId, {
     httpOnly: true,
-    secure: config.security.corsOrigin !== '*',
+    secure: shouldUseSecureCookies(req),
     sameSite: 'strict',
     maxAge: config.security.sessionTtlMinutes * 60 * 1000,
   });
@@ -144,7 +161,7 @@ export async function loginHandler(req, res) {
   destroySession(req, res);
 
   // Create new session after successful authentication
-  const sessionId = createSession(res);
+  const sessionId = createSession(req, res);
 
   logger.info({ ip: req.ip, sessionId: redactSessionId(sessionId) }, 'User logged in');
 
