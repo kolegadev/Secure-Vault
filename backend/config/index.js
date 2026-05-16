@@ -33,6 +33,9 @@ function loadConfig() {
   if (process.env.CORS_ORIGIN) {
     cfg.security = { ...cfg.security, corsOrigin: process.env.CORS_ORIGIN };
   }
+  if (process.env.SECURE_COOKIES) {
+    cfg.security = { ...cfg.security, secureCookies: process.env.SECURE_COOKIES === 'true' };
+  }
 
   // LUKS overrides
   if (process.env.LUKS_DEVICE_PATH) {
