@@ -31,7 +31,7 @@
     "vite": "^5.4.1"
   },
   "overrides": {
-    "multer": "^2.1.0"
+    "multer": "^2.1.1"
   },
   "licenseConfig": {
     "approved": ["BlueOak-1.0.0"],
