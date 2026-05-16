@@ -17,6 +17,9 @@
   "devDependencies": {
     "concurrently": "^8.2.2"
   },
+  "overrides": {
+    "multer": ">=2.0.2"
+  },
   "engines": {
     "node": ">=18.0.0"
   }
