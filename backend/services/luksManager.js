@@ -264,7 +264,12 @@ export async function mountVault() {
     // Ensure subdirectories exist
     const dirs = [config.paths.envDir, config.paths.skillsDir, config.paths.servicesDir, config.paths.exportsDir];
     for (const dir of dirs) {
-      const fullPath = path.join(mountPoint, dir);
+      const sanitizedDir = validatePathComponent(dir);
+      if (!sanitizedDir) {
+        logger.warn({ dir }, 'Skipping invalid directory path component');
+        continue;
+      }
+      const fullPath = path.join(mountPoint, sanitizedDir);
       if (!fs.existsSync(fullPath)) {
         fs.mkdirSync(fullPath, { recursive: true });
       }
@@ -410,6 +415,38 @@ export async function getStatus() {
     last_unlocked_at: dbStatus.last_unlocked_at,
     last_locked_at: dbStatus.last_locked_at,
   };
+}
+
+/**
+ * Validate and sanitize a path component to prevent directory traversal.
+ * @param {string} pathComponent
+ * @returns {string|null} Sanitized path component or null if invalid
+ */
+function validatePathComponent(pathComponent) {
+  if (!pathComponent || typeof pathComponent !== 'string') {
+    return null;
+  }
+
+  // Remove any path traversal sequences
+  const sanitized = pathComponent.replace(/\.\./g, '').replace(/[/\\]/g, '');
+  
+  // Only allow alphanumeric characters, dots, hyphens, and underscores
+  const allowedChars = /^[a-zA-Z0-9.\-_]+$/;
+  if (!allowedChars.test(sanitized)) {
+    return null;
+  }
+
+  // Prevent null bytes and other control characters
+  if (sanitized.includes('\0') || /[\x00-\x1F\x7F]/.test(sanitized)) {
+    return null;
+  }
+
+  // Ensure it's not empty after sanitization
+  if (sanitized.trim() === '') {
+    return null;
+  }
+
+  return sanitized;
 }
 
 /**
