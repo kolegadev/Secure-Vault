@@ -7,6 +7,18 @@ import { unlockDevice, getStatus } from '../services/luksManager.js';
 const SESSION_COOKIE = 'vault_session';
 
 /**
+ * Redact session ID for safe logging - returns first 8 characters followed by asterisks
+ * @param {string} sessionId
+ * @returns {string} redacted session ID
+ */
+function redactSessionId(sessionId) {
+  if (!sessionId || sessionId.length < 8) {
+    return '********';
+  }
+  return sessionId.substring(0, 8) + '*'.repeat(Math.max(0, sessionId.length - 8));
+}
+
+/**
  * Create a new session after successful LUKS unlock.
  * @param {import('express').Response} res
  * @returns {string} sessionId
@@ -26,7 +38,7 @@ export function createSession(res) {
     maxAge: config.security.sessionTtlMinutes * 60 * 1000,
   });
 
-  logger.info({ sessionId }, 'Session created');
+  logger.info({ sessionId: redactSessionId(sessionId) }, 'Session created');
   return sessionId;
 }
 
@@ -41,7 +53,7 @@ export function destroySession(req, res) {
   if (sessionId) {
     const db = getDatabase();
     db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
-    logger.info({ sessionId }, 'Session destroyed');
+    logger.info({ sessionId: redactSessionId(sessionId) }, 'Session destroyed');
   }
 
   res.clearCookie(SESSION_COOKIE);
@@ -131,11 +143,11 @@ export async function loginHandler(req, res) {
   // Create session
   const sessionId = createSession(res);
 
-  logger.info({ ip: req.ip, sessionId }, 'User logged in');
+  logger.info({ ip: req.ip, sessionId: redactSessionId(sessionId) }, 'User logged in');
 
   return res.json({
     success: true,
-    data: { message: 'Logged in successfully', sessionId },
+    data: { message: 'Logged in successfully' },
   });
 }
 
