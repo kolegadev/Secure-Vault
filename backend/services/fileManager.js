@@ -54,12 +54,22 @@ export function writeFile(filePath, content) {
   const fullPath = resolveVaultPath(filePath);
   requireMounted();
 
-  const dir = path.dirname(fullPath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+  // Additional security check: ensure path is within allowed subdirectories
+  const relativePath = path.relative(config.luks.mountPoint, fullPath);
+  const pathParts = relativePath.split(path.sep).filter(p => p);
+  const allowedDirs = ['documents', 'exports', 'uploads', 'backups', 'user-files'];
+  
+  if (pathParts.length > 0 && !allowedDirs.includes(pathParts[0])) {
+    throw new Error('Write path not in allowed directory');
   }
 
-  fs.writeFileSync(fullPath, content, 'utf-8');
+  const dir = path.dirname(fullPath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o750 });
+  }
+
+  // Write file with restrictive permissions
+  fs.writeFileSync(fullPath, content, { mode: 0o640 });
   logger.info({ path: filePath }, 'File written to vault');
 }
 
