@@ -84,9 +84,10 @@ wss.on('connection', (ws, req) => {
   logger.info({ ip: clientIP }, 'WebSocket client connected');
   clients.add(ws);
 
-  // Send current vault status immediately
+  // Send current vault status immediately (sanitized)
   getStatus().then(status => {
-    ws.send(JSON.stringify({ type: 'vault-state', payload: status }));
+    const sanitizedStatus = sanitizeVaultStatus(status);
+    ws.send(JSON.stringify({ type: 'vault-state', payload: sanitizedStatus }));
   }).catch(err => logger.error({ error: err }, 'Failed to send initial vault status'));
 
   ws.on('close', () => {
@@ -99,6 +100,42 @@ wss.on('connection', (ws, req) => {
     clients.delete(ws);
   });
 });
+
+// Filter sensitive information from vault status for WebSocket broadcasts
+function sanitizeVaultStatus(status) {
+  return {
+    state: status.state,
+    device_present: status.device_present,
+    mapper_active: status.mapper_active,
+    mounted: status.mounted,
+    // Remove sensitive paths and device information
+    device_path: status.device_path ? '[REDACTED]' : null,
+    mount_point: status.mount_point ? '[REDACTED]' : null,
+    mapper_name: status.mapper_name ? '[REDACTED]' : null,
+    // Sanitize device info - only include basic operational status
+    device_info: status.device_info ? {
+      isLuks: status.device_info.isLuks,
+      keySlots: status.device_info.keySlots > 0 ? 'available' : 'none',
+      // Remove sensitive crypto details
+      uuid: null,
+      cipher: null,
+      totalSlots: null
+    } : null,
+    // Keep timing information as it's less sensitive
+    last_unlocked_at: status.last_unlocked_at,
+    last_locked_at: status.last_locked_at
+  };
+}
+
+// Filter sensitive information from USB events for WebSocket broadcasts
+function sanitizeUsbEvent(data) {
+  return {
+    type: data.type,
+    timestamp: data.timestamp,
+    // Remove device names and identifiers that could enable fingerprinting
+    device: data.device ? '[USB_DEVICE]' : undefined
+  };
+}
 
 // Broadcast to all connected clients
 function broadcast(message) {
@@ -113,18 +150,21 @@ function broadcast(message) {
 // USB monitoring events
 usbMonitor.on('attached', (data) => {
   logger.info(data, 'USB device attached');
-  broadcast({ type: 'usb-status', payload: { present: true, ...data } });
+  const sanitizedData = sanitizeUsbEvent(data);
+  broadcast({ type: 'usb-status', payload: { present: true, ...sanitizedData } });
 });
 
 usbMonitor.on('detached', (data) => {
   logger.info(data, 'USB device detached');
-  broadcast({ type: 'usb-status', payload: { present: false, ...data } });
+  const sanitizedData = sanitizeUsbEvent(data);
+  broadcast({ type: 'usb-status', payload: { present: false, ...sanitizedData } });
 });
 
 // Periodic vault status broadcast
 setInterval(() => {
   getStatus().then(status => {
-    broadcast({ type: 'vault-state', payload: status });
+    const sanitizedStatus = sanitizeVaultStatus(status);
+    broadcast({ type: 'vault-state', payload: sanitizedStatus });
   }).catch(err => logger.error({ error: err }, 'Periodic vault status failed'));
 }, 5000);
 
