@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import yaml from 'js-yaml';
+import { parse as parseYAML } from 'yaml';
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
 import { getDatabase } from '../db/connection.js';
@@ -17,7 +17,7 @@ export function parseSkillMarkdown(content) {
   }
 
   try {
-    const frontmatter = yaml.load(match[1], { schema: yaml.CORE_SCHEMA });
+    const frontmatter = parseYAML(match[1], { schema: 'core', strict: true });
     return { frontmatter, body: match[2].trim() };
   } catch (error) {
     logger.warn({ error }, 'Failed to parse YAML frontmatter');
