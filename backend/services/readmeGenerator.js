@@ -44,6 +44,24 @@ function generateSkillsSection(skills) {
 }
 
 /**
+ * Sanitize a service name for safe file path usage.
+ * @param {string} serviceName
+ * @returns {string}
+ */
+function sanitizeServiceName(serviceName) {
+  if (!serviceName || typeof serviceName !== 'string') {
+    return 'unnamed-service';
+  }
+
+  // Remove directory traversal sequences and only allow safe characters
+  return serviceName
+    .replace(/[\.\/\\]/g, '') // Remove dots, slashes, backslashes
+    .replace(/[^a-zA-Z0-9_-]/g, '_') // Replace other unsafe chars with underscores
+    .substring(0, 100) // Limit length
+    .trim();
+}
+
+/**
  * Generate a README.md for a service.
  * @param {number} serviceId
  * @returns {Promise<{success: boolean, message: string, content: string|null}>}
@@ -104,7 +122,17 @@ ${service.swagger_url ? `[Swagger UI](${service.swagger_url})` : '_No Swagger UR
 `;
 
   try {
-    const filePath = path.join(config.paths.servicesDir, `${service.name}.md`);
+    // Sanitize the service name to prevent path traversal
+    const safeServiceName = sanitizeServiceName(service.name);
+    const filePath = path.join(config.paths.servicesDir, `${safeServiceName}.md`);
+    
+    // Verify the resolved path is within the intended directory
+    const resolvedPath = path.resolve(filePath);
+    const expectedDir = path.resolve(config.paths.servicesDir);
+    if (!resolvedPath.startsWith(expectedDir + path.sep)) {
+      throw new Error('Invalid file path: potential directory traversal detected');
+    }
+    
     writeFile(filePath, content);
     logger.info({ serviceId, path: filePath }, 'README generated');
     return { success: true, message: 'README generated successfully', content };
