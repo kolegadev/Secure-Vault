@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Wrench, Plus, Search, RefreshCw, ExternalLink, Trash2, FileText, Check, X } from 'lucide-react'
 import { useApi, useFetch } from '../hooks/useApi'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 
 function SkillModal({ isOpen, onClose, onSave }) {
   const [content, setContent] = useState('---\nname: \ndescription: \nversion: 1.0.0\nopenclaw:\n  entry: skill.js\n---\n\n# Skill Documentation\n\nDescribe your skill here.\n')
@@ -34,7 +35,8 @@ function SkillModal({ isOpen, onClose, onSave }) {
 function SkillDetailModal({ skill, onClose }) {
   if (!skill) return null
 
-  const html = skill.body ? marked.parse(skill.body, { async: false }) : ''
+  const rawHtml = skill.body ? marked.parse(skill.body, { async: false }) : ''
+  const sanitizedHtml = DOMPurify.sanitize(rawHtml)
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
@@ -50,7 +52,7 @@ function SkillDetailModal({ skill, onClose }) {
             </div>
           )}
           <div className="prose prose-invert prose-sm max-w-none"
-            dangerouslySetInnerHTML={{ __html: html }}
+            dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
           />
         </div>
       </div>
