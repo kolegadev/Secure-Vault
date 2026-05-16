@@ -9,7 +9,7 @@ import { WebSocketServer } from 'ws';
 import http from 'http';
 
 import { config, isDevelopment } from './config/index.js';
-import { initializeDatabase, getDatabase } from './db/connection.js';
+import { initializeDatabase, getLocalDatabase, getVaultDatabase } from './db/connection.js';
 import { logger } from './utils/logger.js';
 import { apiRateLimiter } from './middleware/rateLimit.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
@@ -40,7 +40,7 @@ function validateWebSocketAuth(req) {
     return { valid: false, sessionId: null };
   }
 
-  const db = getDatabase();
+  const db = getLocalDatabase();
   const session = db.prepare('SELECT * FROM sessions WHERE id = ? AND expires_at > datetime("now")')
     .get(sessionId);
 
@@ -222,7 +222,8 @@ app.use('/api/export', exportRoutes);
 // Activity log endpoint
 app.get('/api/activity', (req, res, next) => {
   try {
-    const db = getDatabase();
+    const db = getVaultDatabase();
+    if (!db) return res.json({ success: true, data: [] });
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
     const rows = db.prepare('SELECT * FROM activity_log ORDER BY created_at DESC LIMIT ?').all(limit);
     res.json({ success: true, data: rows });

@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid';
-import { getDatabase } from '../db/connection.js';
+import { getLocalDatabase } from '../db/connection.js';
 import { logger } from '../utils/logger.js';
 import { config } from '../config/index.js';
 import { unlockDevice, getStatus } from '../services/luksManager.js';
@@ -41,7 +41,7 @@ function redactSessionId(sessionId) {
  * @returns {string} sessionId
  */
 export function createSession(req, res) {
-  const db = getDatabase();
+  const db = getLocalDatabase();
   const sessionId = nanoid();
   const expiresAt = new Date(Date.now() + config.security.sessionTtlMinutes * 60 * 1000).toISOString();
 
@@ -68,7 +68,7 @@ export function destroySession(req, res) {
   const sessionId = req.cookies?.[SESSION_COOKIE] || req.headers.authorization?.replace('Bearer ', '');
 
   if (sessionId) {
-    const db = getDatabase();
+    const db = getLocalDatabase();
     db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
     logger.info({ sessionId: redactSessionId(sessionId) }, 'Session destroyed');
   }
@@ -88,7 +88,7 @@ function validateSession(req) {
     return { valid: false, sessionId: null };
   }
 
-  const db = getDatabase();
+  const db = getLocalDatabase();
   const session = db.prepare('SELECT * FROM sessions WHERE id = ? AND expires_at > datetime("now")')
     .get(sessionId);
 
@@ -209,7 +209,7 @@ export async function statusHandler(req, res) {
  * Cleanup expired sessions (can be called periodically).
  */
 export function cleanupSessions() {
-  const db = getDatabase();
+  const db = getLocalDatabase();
   const result = db.prepare('DELETE FROM sessions WHERE expires_at < datetime("now")').run();
   if (result.changes > 0) {
     logger.info({ count: result.changes }, 'Cleaned up expired sessions');
