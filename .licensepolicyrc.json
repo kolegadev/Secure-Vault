@@ -18,6 +18,11 @@
       "license": "BlueOak-1.0.0",
       "status": "approved",
       "reason": "BlueOak-1.0.0 is a permissive license with explicit patent grants, functionally equivalent to MIT for compliance purposes."
+    },
+    "package-json-from-dist": {
+      "license": "BlueOak-1.0.0",
+      "status": "approved",
+      "reason": "BlueOak-1.0.0 is a permissive license with explicit patent grants, functionally equivalent to MIT for compliance purposes."
     }
   }
 }
