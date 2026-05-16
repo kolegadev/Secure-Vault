@@ -3,7 +3,7 @@ import path from 'path';
 import { parse as parseYAML } from 'yaml';
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
-import { getDatabase } from '../db/connection.js';
+import { getVaultDatabase } from '../db/connection.js';
 
 /**
  * Extract YAML frontmatter and body from markdown content.
@@ -85,7 +85,8 @@ export function scanSkillsDirectory(dir, baseDir = dir) {
  * @returns {Promise<{scanned: number, added: number, updated: number, errors: number}>}
  */
 export async function syncSkillsToDatabase() {
-  const db = getDatabase();
+  const db = getVaultDatabase();
+  if (!db) return { scanned: 0, added: 0, updated: 0, errors: 0 };
   const skillsDir = path.join(config.luks.mountPoint, config.paths.skillsDir);
 
   if (!fs.existsSync(skillsDir)) {
@@ -149,7 +150,8 @@ export async function syncSkillsToDatabase() {
  * @returns {Promise<{success: boolean, message: string}>}
  */
 export async function installSkill(skillId) {
-  const db = getDatabase();
+  const db = getVaultDatabase();
+  if (!db) return { success: false, message: 'Vault database not available' };
   const skill = db.prepare('SELECT * FROM skills WHERE id = ?').get(skillId);
 
   if (!skill) {
@@ -200,7 +202,8 @@ export async function installSkill(skillId) {
  * @returns {Promise<{success: boolean, message: string}>}
  */
 export async function uninstallSkill(skillId) {
-  const db = getDatabase();
+  const db = getVaultDatabase();
+  if (!db) return { success: false, message: 'Vault database not available' };
   const skill = db.prepare('SELECT * FROM skills WHERE id = ?').get(skillId);
 
   if (!skill) {

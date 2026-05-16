@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth, requireVaultMounted } from '../middleware/auth.js';
-import { getDatabase } from '../db/connection.js';
+import { getVaultDatabase } from '../db/connection.js';
 import { logger } from '../utils/logger.js';
 import { writeFile, readFile, exists } from '../services/fileManager.js';
 import path from 'path';
@@ -14,13 +14,15 @@ function redactValue(value) {
 }
 
 function logActivity(action, targetId, details) {
-  const db = getDatabase();
+  const db = getVaultDatabase();
+  if (!db) return;
   db.prepare('INSERT INTO activity_log (action, target_type, target_id, details) VALUES (?, ?, ?, ?)')
     .run(action, 'env_var', targetId, JSON.stringify(details));
 }
 
 function syncEnvFile() {
-  const db = getDatabase();
+  const db = getVaultDatabase();
+  if (!db) return;
   const vars = db.prepare('SELECT name, value FROM env_vars ORDER BY name').all();
   const content = vars.map(v => `${v.name}=${v.value}`).join('\n') + '\n';
   const envPath = path.join(config.paths.envDir, '.env');
@@ -33,7 +35,8 @@ function syncEnvFile() {
 
 router.get('/', requireAuth, requireVaultMounted, (req, res, next) => {
   try {
-    const db = getDatabase();
+    const db = getVaultDatabase();
+    if (!db) return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: 'Vault database is not available' } });
     const { service, skill, search } = req.query;
 
     let sql = 'SELECT id, name, value, description, service_name, api_docs_url, skill_id, created_at, updated_at FROM env_vars WHERE 1=1';
@@ -71,7 +74,8 @@ router.get('/', requireAuth, requireVaultMounted, (req, res, next) => {
 
 router.get('/:id', requireAuth, requireVaultMounted, (req, res, next) => {
   try {
-    const db = getDatabase();
+    const db = getVaultDatabase();
+    if (!db) return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: 'Vault database is not available' } });
     const row = db.prepare('SELECT * FROM env_vars WHERE id = ?').get(req.params.id);
 
     if (!row) {
@@ -93,7 +97,8 @@ router.get('/:id', requireAuth, requireVaultMounted, (req, res, next) => {
 
 router.post('/', requireAuth, requireVaultMounted, (req, res, next) => {
   try {
-    const db = getDatabase();
+    const db = getVaultDatabase();
+    if (!db) return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: 'Vault database is not available' } });
     const { name, value, description, service_name, api_docs_url, skill_id } = req.body;
 
     if (!name || value === undefined) {
@@ -130,7 +135,8 @@ router.post('/', requireAuth, requireVaultMounted, (req, res, next) => {
 
 router.put('/:id', requireAuth, requireVaultMounted, (req, res, next) => {
   try {
-    const db = getDatabase();
+    const db = getVaultDatabase();
+    if (!db) return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: 'Vault database is not available' } });
     const { name, value, description, service_name, api_docs_url, skill_id } = req.body;
     const id = req.params.id;
 
@@ -179,7 +185,8 @@ router.put('/:id', requireAuth, requireVaultMounted, (req, res, next) => {
 
 router.delete('/:id', requireAuth, requireVaultMounted, (req, res, next) => {
   try {
-    const db = getDatabase();
+    const db = getVaultDatabase();
+    if (!db) return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: 'Vault database is not available' } });
     const id = req.params.id;
 
     const existing = db.prepare('SELECT name FROM env_vars WHERE id = ?').get(id);
@@ -200,7 +207,8 @@ router.delete('/:id', requireAuth, requireVaultMounted, (req, res, next) => {
 
 router.post('/bulk-delete', requireAuth, requireVaultMounted, (req, res, next) => {
   try {
-    const db = getDatabase();
+    const db = getVaultDatabase();
+    if (!db) return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: 'Vault database is not available' } });
     const { ids } = req.body;
 
     if (!Array.isArray(ids) || ids.length === 0) {
@@ -249,7 +257,8 @@ router.post('/bulk-delete', requireAuth, requireVaultMounted, (req, res, next) =
 
 router.post('/export', requireAuth, requireVaultMounted, (req, res, next) => {
   try {
-    const db = getDatabase();
+    const db = getVaultDatabase();
+    if (!db) return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: 'Vault database is not available' } });
     const { ids, format = 'dotenv', service_name } = req.body;
 
     let sql = 'SELECT name, value, description FROM env_vars WHERE 1=1';

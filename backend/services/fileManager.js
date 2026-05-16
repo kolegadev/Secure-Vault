@@ -57,7 +57,7 @@ export function writeFile(filePath, content) {
   // Additional security check: ensure path is within allowed subdirectories
   const relativePath = path.relative(config.luks.mountPoint, fullPath);
   const pathParts = relativePath.split(path.sep).filter(p => p);
-  const allowedDirs = ['documents', 'exports', 'uploads', 'backups', 'user-files'];
+  const allowedDirs = ['documents', 'exports', 'uploads', 'backups', 'user-files', 'env', 'skills', 'services'];
   
   if (pathParts.length > 0 && !allowedDirs.includes(pathParts[0])) {
     throw new Error('Write path not in allowed directory');

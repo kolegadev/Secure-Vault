@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth, requireVaultMounted } from '../middleware/auth.js';
-import { getDatabase } from '../db/connection.js';
+import { getVaultDatabase } from '../db/connection.js';
 import { logger } from '../utils/logger.js';
 import { generateServiceReadme } from '../services/readmeGenerator.js';
 
@@ -53,7 +53,8 @@ function validateServiceName(name) {
 
 router.get('/', requireAuth, requireVaultMounted, (req, res, next) => {
   try {
-    const db = getDatabase();
+    const db = getVaultDatabase();
+    if (!db) return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: 'Vault database is not available' } });
     const { search } = req.query;
 
     let sql = 'SELECT * FROM services WHERE 1=1';
@@ -81,7 +82,8 @@ router.get('/', requireAuth, requireVaultMounted, (req, res, next) => {
 
 router.get('/:id', requireAuth, requireVaultMounted, (req, res, next) => {
   try {
-    const db = getDatabase();
+    const db = getVaultDatabase();
+    if (!db) return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: 'Vault database is not available' } });
     const row = db.prepare('SELECT * FROM services WHERE id = ?').get(req.params.id);
 
     if (!row) {
@@ -103,7 +105,8 @@ router.get('/:id', requireAuth, requireVaultMounted, (req, res, next) => {
 
 router.post('/', requireAuth, requireVaultMounted, (req, res, next) => {
   try {
-    const db = getDatabase();
+    const db = getVaultDatabase();
+    if (!db) return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: 'Vault database is not available' } });
     const { name, description, swagger_url } = req.body;
 
     if (!name) {
@@ -137,7 +140,8 @@ router.post('/', requireAuth, requireVaultMounted, (req, res, next) => {
 
 router.put('/:id', requireAuth, requireVaultMounted, (req, res, next) => {
   try {
-    const db = getDatabase();
+    const db = getVaultDatabase();
+    if (!db) return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: 'Vault database is not available' } });
     const { name, description, swagger_url } = req.body;
     const id = req.params.id;
 
@@ -184,7 +188,8 @@ router.put('/:id', requireAuth, requireVaultMounted, (req, res, next) => {
 
 router.delete('/:id', requireAuth, requireVaultMounted, (req, res, next) => {
   try {
-    const db = getDatabase();
+    const db = getVaultDatabase();
+    if (!db) return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: 'Vault database is not available' } });
     const id = req.params.id;
 
     const existing = db.prepare('SELECT name FROM services WHERE id = ?').get(id);

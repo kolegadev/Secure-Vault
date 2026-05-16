@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth, requireVaultMounted } from '../middleware/auth.js';
-import { getDatabase } from '../db/connection.js';
+import { getVaultDatabase } from '../db/connection.js';
 import { logger } from '../utils/logger.js';
 import {
   syncSkillsToDatabase,
@@ -17,7 +17,8 @@ const router = Router();
 
 router.get('/', requireAuth, requireVaultMounted, (req, res, next) => {
   try {
-    const db = getDatabase();
+    const db = getVaultDatabase();
+    if (!db) return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: 'Vault database is not available' } });
     const { search, installed } = req.query;
 
     let sql = 'SELECT id, name, description, path, installed_at, created_at FROM skills WHERE 1=1';
@@ -43,7 +44,8 @@ router.get('/', requireAuth, requireVaultMounted, (req, res, next) => {
 
 router.get('/:id', requireAuth, requireVaultMounted, (req, res, next) => {
   try {
-    const db = getDatabase();
+    const db = getVaultDatabase();
+    if (!db) return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: 'Vault database is not available' } });
     const row = db.prepare('SELECT * FROM skills WHERE id = ?').get(req.params.id);
 
     if (!row) {
@@ -116,14 +118,15 @@ router.post('/', requireAuth, requireVaultMounted, (req, res, next) => {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    fs.writeFileSync(resolvedPath, content, 'utf-8');
+    writeFile(relativePath, content);
 
     // Parse frontmatter for DB
     const parsed = parseSkillMarkdown(content);
     const frontmatterJson = parsed.frontmatter ? JSON.stringify(parsed.frontmatter) : null;
     const metadataJson = parsed.frontmatter?.openclaw ? JSON.stringify(parsed.frontmatter.openclaw) : '{}';
 
-    const db = getDatabase();
+    const db = getVaultDatabase();
+    if (!db) return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: 'Vault database is not available' } });
     const result = db.prepare(`
       INSERT INTO skills (name, description, path, frontmatter, metadata)
       VALUES (?, ?, ?, ?, ?)
@@ -138,7 +141,8 @@ router.post('/', requireAuth, requireVaultMounted, (req, res, next) => {
 
 router.put('/:id', requireAuth, requireVaultMounted, (req, res, next) => {
   try {
-    const db = getDatabase();
+    const db = getVaultDatabase();
+    if (!db) return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: 'Vault database is not available' } });
     const { content } = req.body;
     const id = req.params.id;
 
@@ -147,7 +151,8 @@ router.put('/:id', requireAuth, requireVaultMounted, (req, res, next) => {
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Skill not found' } });
     }
 
-    fs.writeFileSync(skill.path, content, 'utf-8');
+    const relativePath = path.relative(config.luks.mountPoint, skill.path);
+    writeFile(relativePath, content);
 
     const parsed = parseSkillMarkdown(content);
     const frontmatterJson = parsed.frontmatter ? JSON.stringify(parsed.frontmatter) : null;

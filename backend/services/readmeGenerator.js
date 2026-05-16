@@ -1,4 +1,4 @@
-import { getDatabase } from '../db/connection.js';
+import { getVaultDatabase } from '../db/connection.js';
 import { logger } from '../utils/logger.js';
 import { writeFile } from './fileManager.js';
 import path from 'path';
@@ -67,7 +67,8 @@ function sanitizeServiceName(serviceName) {
  * @returns {Promise<{success: boolean, message: string, content: string|null}>}
  */
 export async function generateServiceReadme(serviceId) {
-  const db = getDatabase();
+  const db = getVaultDatabase();
+  if (!db) return { success: false, message: 'Vault database not available', content: null };
   const service = db.prepare('SELECT * FROM services WHERE id = ?').get(serviceId);
 
   if (!service) {
@@ -147,7 +148,8 @@ ${service.swagger_url ? `[Swagger UI](${service.swagger_url})` : '_No Swagger UR
  * @returns {Promise<{success: boolean, message: string, content: string|null}>}
  */
 export async function generateVaultReadme() {
-  const db = getDatabase();
+  const db = getVaultDatabase();
+  if (!db) return { success: false, message: 'Vault database not available', content: null };
   const services = db.prepare('SELECT * FROM services ORDER BY name').all();
   const envCount = db.prepare('SELECT COUNT(*) as count FROM env_vars').get();
   const skillCount = db.prepare('SELECT COUNT(*) as count FROM skills').get();

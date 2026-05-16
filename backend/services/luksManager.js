@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
-import { getDatabase } from '../db/connection.js';
+import { getLocalDatabase, initializeVaultDatabase } from '../db/connection.js';
 
 /**
  * Execute a command and return stdout/stderr.
@@ -43,7 +43,7 @@ function execCommand(command, args, input) {
  * @returns {{state: string, device_path: string|null, mount_point: string|null, mapper_name: string|null}}
  */
 function getVaultStatusDb() {
-  const db = getDatabase();
+  const db = getLocalDatabase();
   const row = db.prepare('SELECT * FROM vault_status WHERE id = 1').get();
   return row || { state: 'locked', device_path: null, mount_point: null, mapper_name: null };
 }
@@ -53,7 +53,7 @@ function getVaultStatusDb() {
  * @param {Partial<{state: string, device_path: string, mount_point: string, mapper_name: string}>} updates
  */
 function updateVaultStatusDb(updates) {
-  const db = getDatabase();
+  const db = getLocalDatabase();
   const current = getVaultStatusDb();
   const merged = { ...current, ...updates, updated_at: new Date().toISOString() };
 
@@ -225,7 +225,18 @@ export async function unlockDevice(passphrase) {
     updateVaultStatusDb({ state: 'unlocked', device_path: config.luks.devicePath, mapper_name: mapperName });
 
     // Mount the filesystem
-    return await mountVault();
+    const mountResult = await mountVault();
+
+    // Try to initialize vault database after successful mount
+    if (mountResult.success) {
+      try {
+        initializeVaultDatabase();
+      } catch (err) {
+        logger.error({ error: err }, 'Failed to initialize vault database after mount');
+      }
+    }
+
+    return mountResult;
   } catch (error) {
     logger.error({ error }, 'LUKS unlock error');
     return { success: false, message: error.message };
@@ -456,7 +467,8 @@ function validatePathComponent(pathComponent) {
  */
 function validateOutputPath(outputPath) {
   // Check for shell metacharacters that could enable command injection
-  const dangerousChars = /[;&|$`<>(){}[\]\\'"]/;
+  // Even though we use spawn, it's good practice to be extremely strict here.
+  const dangerousChars = /[;&|$`<>(){}[\]\\'"*?~!]/;
   if (dangerousChars.test(outputPath)) {
     return null;
   }
@@ -464,6 +476,19 @@ function validateOutputPath(outputPath) {
   // Resolve path to prevent directory traversal
   const resolvedPath = path.resolve(outputPath);
   
+  // Only allow header backups to be stored in the designated exports directory on the vault
+  // or a specific local backup directory.
+  const vaultExportsDir = path.resolve(config.luks.mountPoint, config.paths.exportsDir);
+  const localBackupDir = path.resolve('/opt/openclaw-vault/backups');
+
+  const isInVault = resolvedPath.startsWith(vaultExportsDir + path.sep);
+  const isInLocal = resolvedPath.startsWith(localBackupDir + path.sep);
+
+  if (!isInVault && !isInLocal) {
+    logger.warn({ outputPath: resolvedPath }, 'Header backup path outside of allowed directories');
+    return null;
+  }
+
   // Only allow alphanumeric characters, dots, hyphens, underscores, and forward slashes
   const allowedChars = /^[a-zA-Z0-9.\-_/]+$/;
   if (!allowedChars.test(resolvedPath)) {

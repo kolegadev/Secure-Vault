@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth, requireVaultMounted } from '../middleware/auth.js';
-import { getDatabase } from '../db/connection.js';
+import { getVaultDatabase } from '../db/connection.js';
 import { logger } from '../utils/logger.js';
 import archiver from 'archiver';
 import path from 'path';
@@ -11,7 +11,8 @@ const router = Router();
 
 router.post('/dotenv', requireAuth, requireVaultMounted, (req, res, next) => {
   try {
-    const db = getDatabase();
+    const db = getVaultDatabase();
+    if (!db) return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: 'Vault database is not available' } });
     const { service_name } = req.body;
 
     let sql = 'SELECT name, value, description FROM env_vars';
@@ -37,7 +38,8 @@ router.post('/dotenv', requireAuth, requireVaultMounted, (req, res, next) => {
 
 router.post('/skills', requireAuth, requireVaultMounted, (req, res, next) => {
   try {
-    const db = getDatabase();
+    const db = getVaultDatabase();
+    if (!db) return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: 'Vault database is not available' } });
     const { skill_ids } = req.body;
 
     let sql = 'SELECT path FROM skills';
