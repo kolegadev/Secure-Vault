@@ -44,8 +44,37 @@ router.delete('/delete', requireAuth, requireVaultMounted, (req, res, next) => {
     }
 
     deleteFile(filePath);
+    logger.info({ path: filePath, user: req.session.userId }, 'File deletion successful');
     res.json({ success: true, data: { path: filePath, message: 'File deleted' } });
   } catch (err) {
+    if (err.code === 'PROTECTED_FILE') {
+      return res.status(403).json({ 
+        success: false, 
+        error: { 
+          code: 'PROTECTED_FILE', 
+          message: 'Cannot delete protected system file',
+          details: err.message
+        } 
+      });
+    }
+    if (err.code === 'ENOENT') {
+      return res.status(404).json({ 
+        success: false, 
+        error: { 
+          code: 'NOT_FOUND', 
+          message: 'File not found' 
+        } 
+      });
+    }
+    if (err.code === 'EISDIR') {
+      return res.status(400).json({ 
+        success: false, 
+        error: { 
+          code: 'IS_DIRECTORY', 
+          message: 'Cannot delete directory using file deletion endpoint' 
+        } 
+      });
+    }
     next(err);
   }
 });
