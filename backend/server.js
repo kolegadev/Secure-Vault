@@ -16,6 +16,36 @@ import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { cleanupSessions } from './middleware/auth.js';
 
 import authRoutes from './routes/auth.js';
+
+// Helper function to parse cookies from WebSocket headers
+function parseCookies(cookieHeader) {
+  const cookies = {};
+  if (!cookieHeader) return cookies;
+  
+  cookieHeader.split(';').forEach(cookie => {
+    const [name, ...value] = cookie.split('=');
+    if (name && value.length) {
+      cookies[name.trim()] = decodeURIComponent(value.join('=').trim());
+    }
+  });
+  return cookies;
+}
+
+// Helper function to validate WebSocket authentication
+function validateWebSocketAuth(req) {
+  const cookies = parseCookies(req.headers.cookie);
+  const sessionId = cookies['vault_session'] || req.headers.authorization?.replace('Bearer ', '');
+  
+  if (!sessionId) {
+    return { valid: false, sessionId: null };
+  }
+
+  const db = getDatabase();
+  const session = db.prepare('SELECT * FROM sessions WHERE id = ? AND expires_at > datetime("now")')
+    .get(sessionId);
+
+  return { valid: !!session, sessionId };
+}
 import luksRoutes from './routes/luks.js';
 import envRoutes from './routes/env.js';
 import skillsRoutes from './routes/skills.js';
@@ -40,7 +70,18 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 const clients = new Set();
 
 wss.on('connection', (ws, req) => {
-  logger.info({ ip: req.socket.remoteAddress }, 'WebSocket client connected');
+  const clientIP = req.socket.remoteAddress;
+  
+  // Validate authentication before allowing connection
+  const authResult = validateWebSocketAuth(req);
+  
+  if (!authResult.valid) {
+    logger.warn({ ip: clientIP }, 'WebSocket connection rejected: authentication required');
+    ws.close(4001, 'Authentication required');
+    return;
+  }
+
+  logger.info({ ip: clientIP }, 'WebSocket client connected');
   clients.add(ws);
 
   // Send current vault status immediately
