@@ -17,7 +17,7 @@ export function parseSkillMarkdown(content) {
   }
 
   try {
-    const frontmatter = yaml.load(match[1]);
+    const frontmatter = yaml.load(match[1], { schema: yaml.CORE_SCHEMA });
     return { frontmatter, body: match[2].trim() };
   } catch (error) {
     logger.warn({ error }, 'Failed to parse YAML frontmatter');
