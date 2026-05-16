@@ -413,6 +413,35 @@ export async function getStatus() {
 }
 
 /**
+ * Validate and sanitize the output path for header backup.
+ * @param {string} outputPath
+ * @returns {string|null} Validated path or null if invalid
+ */
+function validateOutputPath(outputPath) {
+  // Check for shell metacharacters that could enable command injection
+  const dangerousChars = /[;&|$`<>(){}[\]\\'"]/;
+  if (dangerousChars.test(outputPath)) {
+    return null;
+  }
+
+  // Resolve path to prevent directory traversal
+  const resolvedPath = path.resolve(outputPath);
+  
+  // Only allow alphanumeric characters, dots, hyphens, underscores, and forward slashes
+  const allowedChars = /^[a-zA-Z0-9.\-_/]+$/;
+  if (!allowedChars.test(resolvedPath)) {
+    return null;
+  }
+
+  // Prevent null bytes and other control characters
+  if (resolvedPath.includes('\0') || /[\x00-\x1F\x7F]/.test(resolvedPath)) {
+    return null;
+  }
+
+  return resolvedPath;
+}
+
+/**
  * Backup the LUKS header.
  * @param {string} outputPath
  * @returns {Promise<{success: boolean, message: string}>}
@@ -422,17 +451,23 @@ export async function backupHeader(outputPath) {
     return { success: false, message: `Device ${config.luks.devicePath} not found` };
   }
 
+  // Validate and sanitize the output path
+  const validatedPath = validateOutputPath(outputPath);
+  if (!validatedPath) {
+    return { success: false, message: 'Invalid output path: contains unsafe characters' };
+  }
+
   try {
     const result = await execCommand(
       'sudo',
-      ['cryptsetup', 'luksHeaderBackup', config.luks.devicePath, '--header-backup-file', outputPath]
+      ['cryptsetup', 'luksHeaderBackup', config.luks.devicePath, '--header-backup-file', validatedPath]
     );
 
     if (result.code !== 0) {
       return { success: false, message: `Header backup failed: ${result.stderr}` };
     }
 
-    logger.info({ outputPath }, 'LUKS header backed up');
+    logger.info({ outputPath: validatedPath }, 'LUKS header backed up');
     return { success: true, message: 'Header backed up successfully' };
   } catch (error) {
     logger.error({ error }, 'Header backup error');
