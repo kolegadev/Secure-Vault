@@ -33,7 +33,7 @@
     "nodemon": "^3.1.4"
   },
   "overrides": {
-    "multer": ">=2.1.0"
+    "multer": "^2.1.0"
   },
   "licenseConfig": {
     "approved": ["BlueOak-1.0.0"],
