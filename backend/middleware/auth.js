@@ -140,7 +140,10 @@ export async function loginHandler(req, res) {
     });
   }
 
-  // Create session
+  // Destroy any existing session to prevent session fixation
+  destroySession(req, res);
+
+  // Create new session after successful authentication
   const sessionId = createSession(res);
 
   logger.info({ ip: req.ip, sessionId: redactSessionId(sessionId) }, 'User logged in');
