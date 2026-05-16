@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json.schemastore.org/licensepolicyrc",
+  "policies": {
+    "allow": [
+      "MIT",
+      "Apache-2.0",
+      "BSD-2-Clause",
+      "BSD-3-Clause",
+      "ISC",
+      "BlueOak-1.0.0",
+      "0BSD",
+      "CC0-1.0",
+      "Unlicense"
+    ]
+  },
+  "overrides": {
+    "path-scurry": {
+      "license": "BlueOak-1.0.0",
+      "status": "approved",
+      "reason": "BlueOak-1.0.0 is a permissive license with explicit patent grants, functionally equivalent to MIT for compliance purposes."
+    }
+  }
+}
