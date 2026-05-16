@@ -1,5 +1,6 @@
 import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
+import path from 'path';
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
 
@@ -134,10 +135,13 @@ class USBMonitor extends EventEmitter {
   }
 
   /**
-   * Get list of currently attached USB block devices.
+   * Internal method - returns raw USB device data with sensitive information.
+   * WARNING: For internal USBMonitor use only. Do NOT expose via API.
+   * Contains sensitive paths and identifiers that should not be disclosed.
+   * @private
    * @returns {{name: string, path: string, size: string|null}[]}
    */
-  getAttachedDevices() {
+  _getAttachedDevicesRaw() {
     const fs = require ? require('fs') : null;
     if (!fs) return [];
 
@@ -159,6 +163,35 @@ class USBMonitor extends EventEmitter {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Get sanitized list of currently attached USB block devices.
+   * Removes sensitive information to prevent fingerprinting and path disclosure.
+   * Safe for API exposure following existing sanitization patterns.
+   * @returns {{connected: boolean, type: string, device_count: number}[]}
+   */
+  getAttachedDevices() {
+    const rawDevices = this._getAttachedDevicesRaw();
+    return rawDevices.map(device => this._sanitizeDeviceInfo(device));
+  }
+
+  /**
+   * Sanitizes device information for safe external exposure.
+   * Follows same pattern as sanitizeUsbEvent() for consistency.
+   * @private
+   * @param {Object} device - Raw device information
+   * @returns {Object} Sanitized device information
+   */
+  _sanitizeDeviceInfo(device) {
+    return {
+      connected: true,
+      type: 'usb',
+      // Deliberately omitting sensitive information:
+      // - name (prevents fingerprinting)
+      // - path (prevents system structure disclosure) 
+      // - size (prevents hardware profiling)
+    };
   }
 }
 
