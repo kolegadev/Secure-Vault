@@ -92,17 +92,31 @@ router.post('/', requireAuth, requireVaultMounted, (req, res, next) => {
       return res.status(400).json({ success: false, error: { code: 'MISSING_FIELDS', message: 'Name and content are required' } });
     }
 
-    const skillDir = directory || name.toLowerCase().replace(/\s+/g, '-');
-    const relativePath = path.join(config.paths.skillsDir, skillDir, 'SKILL.md');
+    // Sanitize directory parameter to prevent path traversal
+    const rawSkillDir = directory || name.toLowerCase().replace(/\s+/g, '-');
+    const sanitizedDir = path.basename(rawSkillDir);
+    
+    // Construct the intended skills directory path
+    const skillsBasePath = path.resolve(config.luks.mountPoint, config.paths.skillsDir);
+    const relativePath = path.join(config.paths.skillsDir, sanitizedDir, 'SKILL.md');
     const fullPath = path.join(config.luks.mountPoint, relativePath);
+    const resolvedPath = path.resolve(fullPath);
+
+    // Ensure the resolved path is within the skills directory
+    if (!resolvedPath.startsWith(skillsBasePath + path.sep) && resolvedPath !== skillsBasePath) {
+      return res.status(400).json({ 
+        success: false, 
+        error: { code: 'INVALID_PATH', message: 'Invalid directory path' } 
+      });
+    }
 
     // Ensure directory exists
-    const dir = path.dirname(fullPath);
+    const dir = path.dirname(resolvedPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    fs.writeFileSync(fullPath, content, 'utf-8');
+    fs.writeFileSync(resolvedPath, content, 'utf-8');
 
     // Parse frontmatter for DB
     const parsed = parseSkillMarkdown(content);
@@ -113,10 +127,10 @@ router.post('/', requireAuth, requireVaultMounted, (req, res, next) => {
     const result = db.prepare(`
       INSERT INTO skills (name, description, path, frontmatter, metadata)
       VALUES (?, ?, ?, ?, ?)
-    `).run(name, description || null, fullPath, frontmatterJson, metadataJson);
+    `).run(name, description || null, resolvedPath, frontmatterJson, metadataJson);
 
     logger.info({ id: result.lastInsertRowid, name }, 'Skill created');
-    res.status(201).json({ success: true, data: { id: result.lastInsertRowid, name, path: fullPath } });
+    res.status(201).json({ success: true, data: { id: result.lastInsertRowid, name, path: resolvedPath } });
   } catch (err) {
     next(err);
   }
