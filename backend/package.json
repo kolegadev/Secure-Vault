@@ -33,6 +33,6 @@
     "nodemon": "^3.1.4"
   },
   "overrides": {
-    "multer": ">=2.0.2"
+    "multer": ">=2.1.0"
   }
 }
