@@ -54,12 +54,20 @@ export function writeFile(filePath, content) {
   const fullPath = resolveVaultPath(filePath);
   requireMounted();
 
-  // Additional security check: ensure path is within allowed subdirectories
+  // Additional security check: ensure path is within allowed subdirectories.
+  // Allowed dirs = configured vault subdirs (env/skills/services/exports/...) plus
+  // legacy user-content dirs.
   const relativePath = path.relative(config.luks.mountPoint, fullPath);
   const pathParts = relativePath.split(path.sep).filter(p => p);
-  const allowedDirs = ['documents', 'exports', 'uploads', 'backups', 'user-files'];
-  
-  if (pathParts.length > 0 && !allowedDirs.includes(pathParts[0])) {
+  const configuredDirs = Object.entries(config.paths)
+    .filter(([k]) => k.endsWith('Dir'))
+    .map(([, v]) => v);
+  const allowedDirs = new Set([
+    ...configuredDirs,
+    'documents', 'exports', 'uploads', 'backups', 'user-files',
+  ]);
+
+  if (pathParts.length > 0 && !allowedDirs.has(pathParts[0])) {
     throw new Error('Write path not in allowed directory');
   }
 

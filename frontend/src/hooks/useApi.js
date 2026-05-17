@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 
 const API_BASE = '/api';
 
@@ -70,6 +70,8 @@ export function useFetch(endpoint) {
       setLoading(false);
     }
   }, [endpoint]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   return { data, loading, error, refetch: fetchData };
 }

@@ -89,7 +89,7 @@ function validateSession(req) {
   }
 
   const db = getDatabase();
-  const session = db.prepare('SELECT * FROM sessions WHERE id = ? AND expires_at > datetime("now")')
+  const session = db.prepare("SELECT * FROM sessions WHERE id = ? AND expires_at > datetime('now')")
     .get(sessionId);
 
   if (!session) {
@@ -210,7 +210,7 @@ export async function statusHandler(req, res) {
  */
 export function cleanupSessions() {
   const db = getDatabase();
-  const result = db.prepare('DELETE FROM sessions WHERE expires_at < datetime("now")').run();
+  const result = db.prepare("DELETE FROM sessions WHERE expires_at < datetime('now')").run();
   if (result.changes > 0) {
     logger.info({ count: result.changes }, 'Cleaned up expired sessions');
   }

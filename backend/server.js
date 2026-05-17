@@ -41,7 +41,7 @@ function validateWebSocketAuth(req) {
   }
 
   const db = getDatabase();
-  const session = db.prepare('SELECT * FROM sessions WHERE id = ? AND expires_at > datetime("now")')
+  const session = db.prepare("SELECT * FROM sessions WHERE id = ? AND expires_at > datetime('now')")
     .get(sessionId);
 
   return { valid: !!session, sessionId };
@@ -52,6 +52,7 @@ import skillsRoutes from './routes/skills.js';
 import servicesRoutes from './routes/services.js';
 import filesRoutes from './routes/files.js';
 import exportRoutes from './routes/export.js';
+import clawhubRoutes from './routes/clawhub.js';
 
 import { usbMonitor } from './services/usbMonitor.js';
 import { getStatus } from './services/luksManager.js';
@@ -218,6 +219,7 @@ app.use('/api/skills', skillsRoutes);
 app.use('/api/services', servicesRoutes);
 app.use('/api/files', filesRoutes);
 app.use('/api/export', exportRoutes);
+app.use('/api/clawhub', clawhubRoutes);
 
 // Activity log endpoint
 app.get('/api/activity', (req, res, next) => {

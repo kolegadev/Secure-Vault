@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import yaml from 'js-yaml';
+import YAML from 'yaml';
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
 import { getDatabase } from '../db/connection.js';
@@ -17,7 +17,7 @@ export function parseSkillMarkdown(content) {
   }
 
   try {
-    const frontmatter = yaml.load(match[1]);
+    const frontmatter = YAML.parse(match[1]);
     return { frontmatter, body: match[2].trim() };
   } catch (error) {
     logger.warn({ error }, 'Failed to parse YAML frontmatter');
@@ -81,6 +81,70 @@ export function scanSkillsDirectory(dir, baseDir = dir) {
 }
 
 /**
+ * Extract the list of required env-var names from a skill's frontmatter.
+ * Handles `frontmatter.requires.env`, `frontmatter.openclaw.requires.env`,
+ * and `frontmatter.metadata.openclaw.requires.env`.
+ * @param {object|null} fm
+ * @returns {string[]}
+ */
+function extractRequiredEnvVars(fm) {
+  if (!fm || typeof fm !== 'object') return [];
+  const namespaces = [
+    fm.openclaw,
+    fm.clawdbot,
+    fm.metadata?.openclaw,
+    fm.metadata?.clawdbot,
+  ].filter(Boolean);
+  const requires = fm.requires || namespaces.map(n => n.requires).find(Boolean) || {};
+  return Array.isArray(requires.env) ? requires.env.filter(v => typeof v === 'string' && v.length > 0) : [];
+}
+
+/**
+ * Derive a service slug from an env-var name. Takes the first underscore-delimited
+ * segment, lowercased — e.g. `XAI_API_KEY` → `xai`, `AWS_ACCESS_KEY_ID` → `aws`.
+ * Returns null if the name doesn't yield a valid slug.
+ * @param {string} envName
+ * @returns {string|null}
+ */
+function deriveServiceName(envName) {
+  if (!envName || typeof envName !== 'string') return null;
+  const head = envName.split('_')[0].toLowerCase();
+  return /^[a-z0-9]+$/.test(head) ? head : null;
+}
+
+/**
+ * After a skill is synced, auto-create the Service and stub env-var rows
+ * implied by its frontmatter. Idempotent — uses INSERT OR IGNORE so existing
+ * user data is never overwritten.
+ * @param {import('better-sqlite3').Database} db
+ * @param {number} skillId
+ * @param {string} skillName
+ * @param {object|null} frontmatter
+ */
+function autoLinkServicesAndEnvVars(db, skillId, skillName, frontmatter) {
+  const envNames = extractRequiredEnvVars(frontmatter);
+  if (envNames.length === 0) return;
+
+  const swaggerUrl = frontmatter?.homepage || null;
+  const description = frontmatter?.description || `Auto-created from skill: ${skillName}`;
+
+  const insertService = db.prepare(`
+    INSERT OR IGNORE INTO services (name, description, swagger_url) VALUES (?, ?, ?)
+  `);
+  const insertEnvVar = db.prepare(`
+    INSERT OR IGNORE INTO env_vars (name, value, description, service_name, skill_id)
+    VALUES (?, '', ?, ?, ?)
+  `);
+
+  for (const envName of envNames) {
+    const service = deriveServiceName(envName);
+    if (!service) continue;
+    insertService.run(service, description, swaggerUrl);
+    insertEnvVar.run(envName, `Required by skill: ${skillName}`, service, skillId);
+  }
+}
+
+/**
  * Scan vault skills directory and sync to database.
  * @returns {Promise<{scanned: number, added: number, updated: number, errors: number}>}
  */
@@ -126,12 +190,18 @@ export async function syncSkillsToDatabase() {
       : '{}';
 
     try {
+      let skillId;
       if (existingPaths.includes(skill.path)) {
         updateStmt.run(name, description, frontmatterJson, metadataJson, skill.path);
         updated++;
+        skillId = db.prepare('SELECT id FROM skills WHERE path = ?').get(skill.path)?.id;
       } else {
-        insertStmt.run(name, description, skill.path, frontmatterJson, metadataJson);
+        const result = insertStmt.run(name, description, skill.path, frontmatterJson, metadataJson);
+        skillId = result.lastInsertRowid;
         added++;
+      }
+      if (skillId) {
+        autoLinkServicesAndEnvVars(db, skillId, name, skill.frontmatter);
       }
     } catch (error) {
       logger.error({ error, path: skill.path }, 'Failed to sync skill');

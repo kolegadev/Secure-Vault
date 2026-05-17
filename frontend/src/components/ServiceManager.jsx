@@ -1,6 +1,48 @@
 import React, { useState } from 'react'
 import { Database, Plus, Search, FileText, Trash2, ExternalLink, X, KeyRound, Wrench } from 'lucide-react'
 import { useApi, useFetch } from '../hooks/useApi'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
+
+function ReadmePreviewModal({ data, onClose }) {
+  if (!data) return null
+  const rawHtml = data.content ? marked.parse(data.content, { async: false }) : ''
+  const sanitizedHtml = DOMPurify.sanitize(rawHtml)
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      <div className="vault-card w-full max-w-3xl max-h-[90vh] overflow-y-auto animate-slide-up">
+        <div className="flex items-center justify-between p-5 border-b border-vault-border">
+          <div>
+            <h2 className="text-lg font-semibold text-vault-text">README for {data.serviceName}</h2>
+            <p className="text-[10px] font-mono text-vault-textMuted mt-0.5">/mnt/optimus-usb/services/{data.serviceName}.md</p>
+          </div>
+          <button onClick={onClose} className="text-vault-textSecondary hover:text-vault-text"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-5">
+          <div
+            className="text-sm text-vault-textSecondary leading-relaxed
+              [&_h1]:text-xl [&_h1]:font-semibold [&_h1]:text-vault-text [&_h1]:mt-5 [&_h1]:mb-2
+              [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-vault-text [&_h2]:mt-4 [&_h2]:mb-2
+              [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-vault-text [&_h3]:mt-3 [&_h3]:mb-1
+              [&_p]:my-2
+              [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-2
+              [&_li]:my-0.5
+              [&_a]:text-vault-primary [&_a]:underline hover:[&_a]:no-underline
+              [&_strong]:text-vault-text [&_strong]:font-semibold
+              [&_code]:font-mono [&_code]:text-xs [&_code]:bg-vault-bg [&_code]:text-vault-text [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded
+              [&_pre]:bg-vault-bg [&_pre]:p-3 [&_pre]:rounded [&_pre]:overflow-x-auto [&_pre]:my-3 [&_pre]:border [&_pre]:border-vault-border
+              [&_blockquote]:border-l-2 [&_blockquote]:border-vault-border [&_blockquote]:pl-3 [&_blockquote]:text-vault-textMuted [&_blockquote]:my-3
+              [&_hr]:border-vault-border [&_hr]:my-4
+              [&_table]:text-xs [&_table]:border-collapse [&_table]:my-3
+              [&_th]:text-vault-text [&_th]:font-semibold [&_th]:px-2 [&_th]:py-1 [&_th]:border [&_th]:border-vault-border [&_th]:bg-vault-bg
+              [&_td]:px-2 [&_td]:py-1 [&_td]:border [&_td]:border-vault-border"
+            dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function ServiceModal({ isOpen, onClose, onSave, editService }) {
   const [form, setForm] = useState({ name: '', description: '', swagger_url: '' })
@@ -97,6 +139,7 @@ export default function ServiceManager() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editService, setEditService] = useState(null)
   const [detailService, setDetailService] = useState(null)
+  const [readmePreview, setReadmePreview] = useState(null)
   const { request } = useApi()
   const { data: services, loading, error, refetch } = useFetch(`/services?search=${search}`)
 
@@ -125,10 +168,15 @@ export default function ServiceManager() {
     }
   }
 
-  const handleGenerateReadme = async (id) => {
+  const handleGenerateReadme = async (svc) => {
     try {
-      const result = await request(`/services/${id}/readme`, { method: 'POST' })
-      alert(result.data?.message || 'README generated')
+      const result = await request(`/services/${svc.id}/readme`, { method: 'POST' })
+      const content = result.data?.content
+      if (content) {
+        setReadmePreview({ serviceName: svc.name, content })
+      } else {
+        alert(result.data?.message || 'README generated')
+      }
     } catch (err) {
       alert(err.message)
     }
@@ -185,7 +233,7 @@ export default function ServiceManager() {
             )}
             <div className="flex items-center gap-2 pt-2">
               <button onClick={() => handleViewDetail(svc)} className="vault-btn-ghost text-xs flex-1"><FileText className="w-3 h-3" /> Details</button>
-              <button onClick={() => handleGenerateReadme(svc.id)} className="vault-btn-ghost text-xs flex-1"><FileText className="w-3 h-3" /> README</button>
+              <button onClick={() => handleGenerateReadme(svc)} className="vault-btn-ghost text-xs flex-1"><FileText className="w-3 h-3" /> README</button>
               <button onClick={() => handleDelete(svc.id)} className="p-1.5 rounded hover:bg-vault-dangerMuted text-vault-textSecondary hover:text-vault-danger"><Trash2 className="w-3.5 h-3.5" /></button>
             </div>
           </div>
@@ -195,6 +243,7 @@ export default function ServiceManager() {
 
       <ServiceModal isOpen={modalOpen} onClose={() => setModalOpen(false)} onSave={handleSave} editService={editService} />
       <ServiceDetail service={detailService} onClose={() => setDetailService(null)} />
+      <ReadmePreviewModal data={readmePreview} onClose={() => setReadmePreview(null)} />
     </div>
   )
 }
