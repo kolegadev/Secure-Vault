@@ -48,6 +48,18 @@
 3. **Access**: Full CRUD operations via React UI
 4. **Lock**: `umount` → `cryptsetup luksClose` → return to login
 
+## Migration Pattern (One-Time)
+- `bin/migrate-luks-to-veracrypt.sh` performs a fully automated LUKS → VeraCrypt migration:
+  1. Mounts the source LUKS volume.
+  2. Copies all data to a temporary secure backup with SHA-256 verification.
+  3. Creates a new VeraCrypt volume with an **exFAT** inner filesystem.
+  4. Restores data into the canonical V2 directory structure (`config`, `secrets`, `skills`, `crypto`, `exports`, `audit`).
+  5. Generates `vault-manifest.json`.
+  6. Validates the restored vault via `VeraCryptProvider.validateVaultStructure` using `bin/validate-migration.mjs`.
+  7. Prompts before deleting the temporary backup.
+- Legacy directories are mapped automatically: `env/` → `secrets/`, `services/` → `config/`.
+- Cross-platform validation (Linux, macOS, Windows) is required before the backup is deleted.
+
 ## Security Patterns
 - Passphrase piped to cryptsetup stdin (never shell-interpolated)
 - Passphrase cleared from memory immediately after unlock

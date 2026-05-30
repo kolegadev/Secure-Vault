@@ -132,7 +132,7 @@ This checklist tracks the conversion of Secure Vault from a Linux-only LUKS-back
 **Goal**: Move existing LUKS vault contents to a new VeraCrypt exFAT volume without data loss.
 
 ### C.1 Build Migration Script
-- [ ] Create `bin/migrate-luks-to-veracrypt.sh`.
+- [x] Create `bin/migrate-luks-to-veracrypt.sh`.
   - Step 1: Mount current LUKS volume.
   - Step 2: Copy all contents to a temporary secure backup (`/tmp/sv-migrate-<timestamp>/`).
   - Step 3: Verify backup integrity (file count, checksums).
@@ -154,11 +154,11 @@ This checklist tracks the conversion of Secure Vault from a Linux-only LUKS-back
   - Step 10: Prompt user before deleting temporary backup.
 
 ### C.2 Cross-Platform Validation
-- [ ] Document that the new VeraCrypt vault must be validated on:
+- [x] Document that the new VeraCrypt vault must be validated on:
   - Pi5 / Linux
   - macOS (if applicable)
   - Windows (if applicable)
-- [ ] Do **not** delete the LUKS backup until all platforms pass.
+- [x] Do **not** delete the LUKS backup until all platforms pass.
 
 **Files**
 - `bin/migrate-luks-to-veracrypt.sh` (new)

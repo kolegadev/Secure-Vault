@@ -111,18 +111,22 @@
 │   ├── tailwind.config.js     # Custom vault color palette
 │   └── postcss.config.js      # Tailwind + autoprefixer
 ├── bin/
-│   ├── setup.sh               # Full system setup (root required)
-│   ├── usb-inserted.sh        # udev trigger script
-│   ├── backup.sh              # LUKS header + full disk backup
+│   ├── setup.sh                      # Full system setup (root required)
+│   ├── usb-inserted.sh               # udev trigger script
+│   ├── backup.sh                     # LUKS header + full disk backup
+│   ├── migrate-luks-to-veracrypt.sh  # One-time LUKS → VeraCrypt migration
+│   ├── validate-migration.mjs        # Node.js helper for migration validation
 │   ├── securevault-veracrypt-mount   # Sudoers-safe VeraCrypt mount wrapper
 │   └── securevault-veracrypt-unmount # Sudoers-safe VeraCrypt unmount wrapper
+├── docs/
+│   └── migration-guide.md            # LUKS → VeraCrypt migration documentation
 ├── systemd/
 │   └── openclaw-vault.service # Hardened systemd unit
 ├── package.json               # Root workspace orchestration
 └── README.md                  # Project documentation
 ```
 
-## LUKS Volume Structure (mounted at /mnt/openclaw-vault)
+## Legacy V1 Volume Structure (mounted at /mnt/openclaw-vault)
 ```
 /mnt/openclaw-vault/
 ├── vault.db              # SQLite metadata database
@@ -135,6 +139,21 @@
 │   └── {service}.md
 └── exports/              # Export bundles
 ```
+
+## Canonical V2 Volume Structure (mounted at /mnt/securevault)
+```
+/mnt/securevault/
+├── vault.db              # SQLite metadata database
+├── vault-manifest.json   # Vault metadata manifest
+├── config/               # Service docs, profiles, config files
+├── secrets/              # Environment variable files (.env)
+├── skills/               # SKILL.md library
+├── crypto/               # Signing keys, wallets (Tier 1)
+├── exports/              # Export bundles
+└── audit/                # Access and mount event logs
+```
+
+**Migration mapping:** `env/` → `secrets/`, `services/` → `config/`. The remaining directories (`skills`, `exports`) are preserved in place. `crypto/` and `audit/` are created empty if they do not exist.
 
 ## Testing Strategy
 | Layer | Method | Coverage |
