@@ -11,7 +11,7 @@
 | Module | Responsibility | Key Endpoints |
 |--------|---------------|---------------|
 | Auth | Session-based login, timeout, CSRF | POST /api/auth/login, logout |
-| LUKS Controller | Volume create/unlock/lock/status | POST /api/luks/* |
+| Vault Controller | Volume create/unlock/lock/status | POST /api/luks/* (→ /api/vault/* in Epic B) |
 | USB Monitor | Detect insertion/removal | WebSocket /ws/usb-status |
 | Env Var API | CRUD for environment variables | GET/POST/PUT/DELETE /api/env |
 | File Manager | Read/write .env, SKILL.md, README | GET/POST /api/files/* |
@@ -20,11 +20,20 @@
 | Export Service | Export .env, bundles, archives | POST /api/export/* |
 
 ## Key Services (Backend)
-- **luksManager.js**: cryptsetup wrapper via `child_process.spawn()`
+- **VaultProvider** (`backend/services/VaultProvider.js`): Abstract base class defining the provider contract
+- **VaultProviderFactory** (`backend/services/VaultProviderFactory.js`): Returns `LuksProvider` or `VeraCryptProvider` based on config/env
+- **LuksProvider** (`backend/services/providers/LuksProvider.js`): LUKS/cryptsetup adapter (legacy)
+- **VeraCryptProvider** (`backend/services/providers/VeraCryptProvider.js`): VeraCrypt CLI adapter (cross-platform)
 - **usbMonitor.js**: udev event listener
 - **fileManager.js**: Safe file operations on mounted vault
 - **readmeGenerator.js**: README.md template engine
 - **skillScanner.js**: SKILL.md discovery & YAML frontmatter parser
+
+## VaultProvider Pattern
+- Routes and middleware consume `VaultProviderFactory.getProvider()` — never import `luksManager.js` directly.
+- `mountVault(devicePath, mountPoint, password)` unlocks + mounts via stdin password passing.
+- `unmountVault(mountPoint)` dismounts + locks safely (busy-file detection).
+- Shared filesystem helpers (`validateVaultStructure`, `readVaultManifest`, `listSecrets`, `listSkills`) live in the abstract base class.
 
 ## Authentication Pattern
 - Session-based (not JWT) — stateful local system

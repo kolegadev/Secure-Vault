@@ -1,3 +1,8 @@
+/**
+ * @deprecated This module is deprecated in V2.
+ * Use VaultProviderFactory + LuksProvider (backend/services/providers/LuksProvider.js)
+ * or VeraCryptProvider instead. Kept temporarily for rollback safety.
+ */
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';

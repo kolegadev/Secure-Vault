@@ -12,8 +12,8 @@
 | UI Styling | Tailwind CSS | 3.4.x |
 | Real-time | WebSocket (ws library) | 8.x |
 | Process Manager | systemd | Built-in |
-| Encryption | LUKS2 (cryptsetup) | 2.x |
-| Filesystem | ext4 | Built-in |
+| Encryption | LUKS2 (cryptsetup) or VeraCrypt | 2.x / 1.26+ |
+| Filesystem | ext4 / exFAT | Built-in |
 
 ## Key npm Dependencies
 
@@ -60,7 +60,8 @@
 │   │   └── seed.js            # Seeding script (optional)
 │   ├── config/
 │   │   ├── default.json       # Default configuration
-│   │   └── index.js           # Config loader with env overrides
+│   │   ├── index.js           # Config loader with env overrides
+│   │   └── platforms.js       # Platform-specific defaults (VeraCrypt paths, mount points)
 │   ├── routes/
 │   │   ├── auth.js            # /api/auth/* (login, logout, status)
 │   │   ├── luks.js            # /api/luks/* (create, unlock, lock, keyslot)
@@ -74,11 +75,17 @@
 │   │   ├── error.js           # Global error handler + 404
 │   │   └── rateLimit.js       # API + auth rate limiters
 │   ├── services/
-│   │   ├── luksManager.js     # cryptsetup wrapper (spawn, stdin piping)
-│   │   ├── usbMonitor.js      # udevadm monitor + fallback polling
-│   │   ├── fileManager.js     # Safe vault file ops with path traversal guards
-│   │   ├── skillScanner.js    # SKILL.md discovery, YAML parsing, OpenClaw install
-│   │   └── readmeGenerator.js # Auto-generated service README templates
+│   │   ├── VaultProvider.js        # Abstract base class (provider contract)
+│   │   ├── VaultProviderFactory.js # Singleton factory (luks | veracrypt)
+│   │   ├── errors.js               # VaultError, MountError, ValidationError
+│   │   ├── luksManager.js          # @deprecated — legacy cryptsetup wrapper
+│   │   ├── providers/
+│   │   │   ├── LuksProvider.js     # LUKS adapter (implements VaultProvider)
+│   │   │   └── VeraCryptProvider.js # VeraCrypt CLI adapter (cross-platform)
+│   │   ├── usbMonitor.js           # udevadm monitor + fallback polling
+│   │   ├── fileManager.js          # Safe vault file ops with path traversal guards
+│   │   ├── skillScanner.js         # SKILL.md discovery, YAML parsing, OpenClaw install
+│   │   └── readmeGenerator.js      # Auto-generated service README templates
 │   ├── utils/
 │   │   └── logger.js          # Pino logger with passphrase redaction
 │   └── .env.example           # Environment variable template

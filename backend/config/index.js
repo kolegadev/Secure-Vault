@@ -48,6 +48,11 @@ function loadConfig() {
     cfg.luks = { ...cfg.luks, mapperName: process.env.LUKS_MAPPER_NAME };
   }
 
+  // Vault provider override
+  if (process.env.VAULT_PROVIDER) {
+    cfg.vault = { ...cfg.vault, provider: process.env.VAULT_PROVIDER };
+  }
+
   // USB overrides
   if (process.env.USB_POLL_INTERVAL_MS) {
     cfg.usb = { ...cfg.usb, pollIntervalMs: parseInt(process.env.USB_POLL_INTERVAL_MS, 10) };

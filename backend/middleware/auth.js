@@ -2,7 +2,7 @@ import { nanoid } from 'nanoid';
 import { getDatabase } from '../db/connection.js';
 import { logger } from '../utils/logger.js';
 import { config } from '../config/index.js';
-import { unlockDevice, getStatus } from '../services/luksManager.js';
+import { VaultProviderFactory } from '../services/VaultProviderFactory.js';
 
 /**
  * Determine if cookies should use the secure flag.
@@ -121,7 +121,8 @@ export function requireAuth(req, res, next) {
  * Middleware: check vault is mounted (session optional but recommended).
  */
 export async function requireVaultMounted(req, res, next) {
-  const status = await getStatus();
+  const provider = VaultProviderFactory.getProvider();
+  const status = await provider.getStatus();
 
   if (status.state !== 'mounted') {
     return res.status(403).json({
@@ -134,7 +135,7 @@ export async function requireVaultMounted(req, res, next) {
 }
 
 /**
- * Login handler: validate passphrase against LUKS, create session.
+ * Login handler: validate passphrase against vault provider, create session.
  */
 export async function loginHandler(req, res) {
   const { passphrase } = req.body;
@@ -146,8 +147,8 @@ export async function loginHandler(req, res) {
     });
   }
 
-  // Attempt LUKS unlock
-  const unlockResult = await unlockDevice(passphrase);
+  const provider = VaultProviderFactory.getProvider();
+  const unlockResult = await provider.mountVault(null, null, passphrase);
 
   if (!unlockResult.success) {
     logger.warn({ ip: req.ip }, 'Failed login attempt');
@@ -180,8 +181,8 @@ export async function logoutHandler(req, res) {
   destroySession(req, res);
 
   if (lock) {
-    const { lockDevice } = await import('../services/luksManager.js');
-    const lockResult = await lockDevice();
+    const provider = VaultProviderFactory.getProvider();
+    const lockResult = await provider.unmountVault();
     logger.info({ locked: lockResult.success }, 'Vault locked on logout');
   }
 
@@ -193,7 +194,8 @@ export async function logoutHandler(req, res) {
  */
 export async function statusHandler(req, res) {
   const { valid } = validateSession(req);
-  const vaultStatus = await getStatus();
+  const provider = VaultProviderFactory.getProvider();
+  const vaultStatus = await provider.getStatus();
 
   return res.json({
     success: true,

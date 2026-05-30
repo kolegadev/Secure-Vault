@@ -55,7 +55,7 @@ import exportRoutes from './routes/export.js';
 import clawhubRoutes from './routes/clawhub.js';
 
 import { usbMonitor } from './services/usbMonitor.js';
-import { getStatus } from './services/luksManager.js';
+import { VaultProviderFactory } from './services/VaultProviderFactory.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -86,7 +86,8 @@ wss.on('connection', (ws, req) => {
   clients.add(ws);
 
   // Send current vault status immediately (sanitized)
-  getStatus().then(status => {
+  const provider = VaultProviderFactory.getProvider();
+  provider.getStatus().then(status => {
     const sanitizedStatus = sanitizeVaultStatus(status);
     ws.send(JSON.stringify({ type: 'vault-state', payload: sanitizedStatus }));
   }).catch(err => logger.error({ error: err }, 'Failed to send initial vault status'));
@@ -163,7 +164,8 @@ usbMonitor.on('detached', (data) => {
 
 // Periodic vault status broadcast
 setInterval(() => {
-  getStatus().then(status => {
+  const provider = VaultProviderFactory.getProvider();
+  provider.getStatus().then(status => {
     const sanitizedStatus = sanitizeVaultStatus(status);
     broadcast({ type: 'vault-state', payload: sanitizedStatus });
   }).catch(err => logger.error({ error: err }, 'Periodic vault status failed'));

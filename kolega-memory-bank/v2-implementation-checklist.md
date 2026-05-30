@@ -23,7 +23,7 @@ This checklist tracks the conversion of Secure Vault from a Linux-only LUKS-back
 **Goal**: Create a pluggable backend so the UI and routes call an interface, not `cryptsetup` directly.
 
 ### A.1 Define `VaultProvider` Interface
-- [ ] Create `backend/services/VaultProvider.js` with the contract:
+- [x] Create `backend/services/VaultProvider.js` with the contract:
   - `detectDevices()` → array of candidate USB/removable devices
   - `getVaultStatus()` → `{ mounted, mountPath, provider }`
   - `mountVault(devicePath, mountPoint, password)` → mount via stdin
@@ -32,7 +32,7 @@ This checklist tracks the conversion of Secure Vault from a Linux-only LUKS-back
   - `readVaultManifest(mountPoint)` → parse `vault-manifest.json`
   - `listSecrets(mountPoint)` → env file names
   - `listSkills(mountPoint)` → skill folder names
-- [ ] Create `backend/services/errors.js` with `VaultError`, `MountError`, `ValidationError`.
+- [x] Create `backend/services/errors.js` with `VaultError`, `MountError`, `ValidationError`.
 
 **Acceptance Criteria**
 - Interface is pure JS (no framework change).
@@ -40,40 +40,40 @@ This checklist tracks the conversion of Secure Vault from a Linux-only LUKS-back
 - `luksManager.js` is no longer imported by routes directly.
 
 ### A.2 Refactor `LuksProvider` (Legacy Adapter)
-- [ ] Create `backend/services/providers/LuksProvider.js`.
-- [ ] Migrate existing `luksManager.js` logic into the adapter.
-- [ ] Ensure `LuksProvider` fully implements the `VaultProvider` interface.
-- [ ] Keep `luksManager.js` temporarily for rollback, mark `@deprecated`.
+- [x] Create `backend/services/providers/LuksProvider.js`.
+- [x] Migrate existing `luksManager.js` logic into the adapter.
+- [x] Ensure `LuksProvider` fully implements the `VaultProvider` interface.
+- [x] Keep `luksManager.js` temporarily for rollback, mark `@deprecated`.
 
 **Files Created / Modified**
 - `backend/services/providers/LuksProvider.js` (new)
 - `backend/services/luksManager.js` (deprecated, frozen)
 
 ### A.3 Create `VeraCryptProvider`
-- [ ] Create `backend/services/providers/VeraCryptProvider.js`.
-- [ ] Implement platform detection (`linux`, `darwin`, `win32`).
-- [ ] Resolve VeraCrypt binary per platform:
+- [x] Create `backend/services/providers/VeraCryptProvider.js`.
+- [x] Implement platform detection (`linux`, `darwin`, `win32`).
+- [x] Resolve VeraCrypt binary per platform:
   - Linux: `/usr/bin/veracrypt`
   - macOS: `/Applications/VeraCrypt.app/Contents/MacOS/VeraCrypt`
   - Windows: `VeraCrypt.exe` (from PATH or registry)
-- [ ] Resolve default mount point per platform:
+- [x] Resolve default mount point per platform:
   - Linux: `/mnt/securevault`
   - macOS: `/Volumes/SecureVault`
   - Windows: `S:` (configurable drive letter)
-- [ ] Implement `mountVault` using stdin password passing:
+- [x] Implement `mountVault` using stdin password passing:
   ```js
   const proc = spawn(veracryptBin, ['--text', '--mount', devicePath, mountPoint, '--stdin']);
   proc.stdin.write(password + '\n');
   proc.stdin.end();
   ```
-- [ ] Implement `unmountVault` with `--dismount` and busy-file safety.
-- [ ] Implement `detectDevices` by scanning likely removable USB block devices (`/dev/disk/by-id/usb-*`, `diskutil list`, `wmic diskdrive`).
-- [ ] Add mount timeout handling (default 30s).
+- [x] Implement `unmountVault` with `--dismount` and busy-file safety.
+- [x] Implement `detectDevices` by scanning likely removable USB block devices (`/dev/disk/by-id/usb-*`, `diskutil list`, `wmic diskdrive`).
+- [x] Add mount timeout handling (default 30s).
 
 **Security Rules for VeraCryptProvider**
-- [ ] Never pass `-p` or `--password` on the command line.
-- [ ] Never log the password or mount command string.
-- [ ] Immediately overwrite the local `password` variable after use (`password = null`).
+- [x] Never pass `-p` or `--password` on the command line.
+- [x] Never log the password or mount command string.
+- [x] Immediately overwrite the local `password` variable after use (`password = null`).
 
 **Acceptance Criteria**
 - Mount/unmount works on the current Linux dev environment.
@@ -82,10 +82,10 @@ This checklist tracks the conversion of Secure Vault from a Linux-only LUKS-back
 - Unmount fails safely if files are in use.
 
 ### A.4 Provider Factory & Config
-- [ ] Create `backend/services/VaultProviderFactory.js`.
-- [ ] Load active provider from `backend/config/default.json` key `vault.provider` (`luks` | `veracrypt`).
-- [ ] Support env override: `VAULT_PROVIDER=veracrypt`.
-- [ ] Create `backend/config/platforms.js` with platform-specific defaults.
+- [x] Create `backend/services/VaultProviderFactory.js`.
+- [x] Load active provider from `backend/config/default.json` key `vault.provider` (`luks` | `veracrypt`).
+- [x] Support env override: `VAULT_PROVIDER=veracrypt`.
+- [x] Create `backend/config/platforms.js` with platform-specific defaults.
 
 **Files**
 - `backend/services/VaultProviderFactory.js` (new)
