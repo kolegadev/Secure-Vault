@@ -21,6 +21,9 @@ mkdir -p "$INSTALL_DIR"
 cp -r . "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
+# Ensure deploy scripts are executable
+chmod +x deploy/health-check.py
+
 # Create virtual environment
 python3 -m venv venv
 venv/bin/pip install --upgrade pip
@@ -34,6 +37,9 @@ systemctl enable secret-server.service
 systemctl enable signing-agent.service
 
 echo "Installation complete."
+echo "Startup order:"
+echo "  tailscaled → openclaw-vault (mount) → secret-server → signing-agent"
+echo ""
 echo "Start services with:"
 echo "  systemctl start openclaw-vault.service"
 echo "  systemctl start secret-server.service"

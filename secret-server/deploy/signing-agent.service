@@ -1,6 +1,7 @@
 [Unit]
 Description=OpenClaw Signing Agent
-After=openclaw-vault.service tailscaled.service
+Documentation=https://github.com/openclaw/secure-vault
+After=openclaw-vault.service tailscaled.service secret-server.service
 Requires=openclaw-vault.service
 
 [Service]

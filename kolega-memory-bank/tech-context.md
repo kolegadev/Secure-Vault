@@ -164,6 +164,7 @@ pytest tests/
 │   ├── deploy/
 │   │   ├── secret-server.service  # Hardened systemd unit
 │   │   ├── signing-agent.service  # Hardened signing-agent systemd unit
+│   │   ├── health-check.py        # ExecStartPost health check script
 │   │   └── install.sh             # Pi5 install script (both services)
 │   ├── tests/
 │   │   ├── test_api.py        # FastAPI TestClient tests
@@ -171,6 +172,7 @@ pytest tests/
 │   │   └── test_rate_limiter.py # Rate limiter unit tests
 │   ├── pyproject.toml         # Python packaging
 │   ├── requirements.txt       # Production dependencies
+│   ├── .env.example           # Secret Server environment template
 │   └── README.md              # Secret Server documentation
 ├── bin/
 │   ├── setup.sh                      # Full system setup (root required)

@@ -345,10 +345,10 @@ Implement the minimum API:
 ## Epic G — Deployment & Services
 
 ### G.1 systemd Units
-- [ ] Update `systemd/openclaw-vault.service` for V2 (VeraCrypt, not LUKS).
-- [ ] Create `secret-server/deploy/secret-server.service`.
-- [ ] Create `secret-server/deploy/signing-agent.service`.
-- [ ] Document startup order:
+- [x] Update `systemd/openclaw-vault.service` for V2 (VeraCrypt, not LUKS).
+- [x] Create `secret-server/deploy/secret-server.service`.
+- [x] Create `secret-server/deploy/signing-agent.service`.
+- [x] Document startup order:
   ```
   tailscaled
     ↓
@@ -360,13 +360,13 @@ Implement the minimum API:
   ```
 
 ### G.2 Environment Configuration
-- [ ] Add `VAULT_PROVIDER` to `backend/.env.example`.
-- [ ] Add `SECRET_SERVER_PORT`, `SECRET_SERVER_BIND_IP` to secret-server config.
-- [ ] Add `TAILSCALE_ONLY=true` enforcement flag.
+- [x] Add `VAULT_PROVIDER` to `backend/.env.example`.
+- [x] Add `SECRET_SERVER_PORT`, `SECRET_SERVER_BIND_IP` to secret-server config.
+- [x] Add `TAILSCALE_ONLY=true` enforcement flag.
 
 ### G.3 Health Checks
-- [ ] Secret Server `/health` returns vault mount state.
-- [ ] Systemd `ExecStartPost` health check script.
+- [x] Secret Server `/health` returns vault mount state.
+- [x] Systemd `ExecStartPost` health check script.
 
 ---
 

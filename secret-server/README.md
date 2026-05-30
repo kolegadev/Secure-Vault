@@ -31,5 +31,52 @@ SECRET_SERVER_TAILSCALE_ONLY=false uvicorn secret_server.main:app --host 127.0.0
 
 ## Deployment
 
-See `deploy/install.sh` and `deploy/secret-server.service` for Pi5 systemd
-deployment.
+### Startup Order
+
+```
+tailscaled.service
+      ↓
+openclaw-vault.service  (mount VeraCrypt volume)
+      ↓
+secret-server.service   (FastAPI + health-check ExecStartPost)
+      ↓
+signing-agent.service   (isolated signing subprocess)
+```
+
+Dependencies are enforced via systemd `After=` / `Before=` directives:
+- `secret-server` waits for `openclaw-vault`
+- `signing-agent` waits for `secret-server`
+
+### Installation
+
+See `deploy/install.sh` for automated Pi5 installation.
+
+```bash
+sudo ./deploy/install.sh
+```
+
+### Health Check
+
+`secret-server.service` runs `deploy/health-check.py` as `ExecStartPost`.
+It polls `GET /health` for up to 10 seconds and exits non-zero if the
+service does not become ready, causing systemd to mark the unit as failed.
+
+Manual check:
+```bash
+/opt/secret-server/venv/bin/python /opt/secret-server/deploy/health-check.py
+```
+
+### Configuration
+
+Copy `.env.example` to `.env` and adjust:
+
+| Variable | Purpose |
+|----------|---------|
+| `SECRET_SERVER_HOST` | Bind IP (overridden by Tailscale IP when `tailscale_only=true`) |
+| `SECRET_SERVER_PORT` | Listen port (default 8000) |
+| `SECRET_SERVER_TAILSCALE_ONLY` | Refuse to start without 100.x.x.x interface |
+| `SECRET_SERVER_VAULT_MOUNT_POINT` | Path to mounted vault |
+| `SECRET_SERVER_USE_SIGNING_AGENT` | Proxy signing to agent subprocess |
+| `SECRET_SERVER_SIGNING_AGENT_SOCKET` | Unix socket path for agent |
+| `SECRET_SERVER_SIGNING_RATE_LIMIT_PER_MINUTE` | Per-client signing quota |
+| `SECRET_SERVER_LOG_LEVEL` | Logging verbosity |

@@ -42,6 +42,22 @@ When the VeraCrypt USB is plugged into a Raspberry Pi 5, a dedicated FastAPI ser
   - **Tier 2 (runtime-env)** — `.env` files parsed and returned as JSON; client stores in RAM only.
   - **Tier 1 (signing)** — private keys never leave the Pi; client sends `payload_hash`, server returns `signature`.
 
+### Deployment & Startup Order
+Systemd enforces the following boot sequence on the Pi5:
+```
+tailscaled.service
+      ↓
+openclaw-vault.service   (Node.js backend, V2 VeraCrypt-aware)
+      ↓
+secret-server.service    (FastAPI, ExecStartPost health-check.py)
+      ↓
+signing-agent.service    (isolated signing subprocess, mlock)
+```
+- `openclaw-vault.service` sets `VAULT_PROVIDER=veracrypt` and `VAULT_MOUNT_POINT=/mnt/securevault`.
+- `secret-server.service` has `Before=signing-agent.service` and `ExecStartPost=/opt/secret-server/venv/bin/python /opt/secret-server/deploy/health-check.py`.
+- `signing-agent.service` has `After=secret-server.service` and `Requires=openclaw-vault.service`.
+- The health-check script polls `GET /health` for up to 10 seconds; if it fails, systemd marks the unit as failed.
+
 ### Modules
 | Module | Responsibility | Key Endpoints |
 |--------|---------------|---------------|
