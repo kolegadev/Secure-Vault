@@ -116,6 +116,17 @@ pytest tests/
 │   │   └── readmeGenerator.js      # Auto-generated service README templates
 │   ├── utils/
 │   │   └── logger.js          # Pino logger with passphrase redaction
+│   ├── test/
+│   │   ├── helpers/
+│   │   │   └── test-setup.js  # In-memory DB + factory reset utilities
+│   │   ├── integration/
+│   │   │   └── vault-lifecycle.test.js  # Full mount→read→unmount cycle
+│   │   ├── providers/
+│   │   │   ├── LuksProvider.test.js     # LUKS provider unit tests
+│   │   │   └── VeraCryptProvider.test.js # VeraCrypt provider unit tests
+│   │   ├── VaultProvider.test.js        # Abstract base class tests
+│   │   ├── VaultProviderFactory.test.js # Factory selection tests
+│   │   └── security.test.js             # ps aux + logger redaction tests
 │   └── .env.example           # Environment variable template
 ├── frontend/
 │   ├── src/
@@ -183,6 +194,10 @@ pytest tests/
 │   ├── securevault-veracrypt-mount   # Sudoers-safe VeraCrypt mount wrapper
 │   └── securevault-veracrypt-unmount # Sudoers-safe VeraCrypt unmount wrapper
 ├── docs/
+│   ├── veracrypt-setup.md            # VeraCrypt CLI installation & configuration
+│   ├── tailscale-setup.md            # Tailscale network setup for Secret Server
+│   ├── api.md                        # Secret Server API documentation
+│   ├── cross-platform-smoke-tests.md # Manual validation steps per platform
 │   ├── migration-guide.md            # LUKS → VeraCrypt migration documentation
 │   └── signing-agent.md              # Signing Agent architecture & protocol
 ├── systemd/
@@ -225,12 +240,13 @@ pytest tests/
 ## Testing Strategy
 | Layer | Method | Coverage |
 |-------|--------|----------|
-| LUKS operations | Shell scripts + cryptsetup | Volume lifecycle |
-| Node API endpoints | Jest + Supertest | All CRUD, error cases, auth |
-| Frontend components | Vitest + React Testing Library | Form validation, state transitions |
-| Secret Server endpoints | pytest + FastAPI TestClient | Vault guard, auth, signing |
-| Integration | Playwright | Full user journeys |
-| Security | Manual penetration testing | Rate limits, CSRF, session hijacking |
+| VeraCrypt operations | Shell scripts + veracrypt | Volume lifecycle |
+| Node API endpoints | Node built-in test runner | Provider logic, factory, filesystem helpers |
+| Frontend components | *(future)* Vitest + React Testing Library | Form validation, state transitions |
+| Secret Server endpoints | pytest + FastAPI TestClient | Vault guard, auth, signing, rate limiting |
+| Integration | Node built-in test runner | Full mount → validate → read → unmount cycle |
+| Security | Node built-in test runner + live `ps` inspection | Password visibility in process listings, logger redaction |
+| Cross-platform | Manual smoke tests (docs/cross-platform-smoke-tests.md) | Linux, macOS, Windows validation |
 
 ## Security Patterns
 - Passphrase piped to cryptsetup stdin (never shell-interpolated)

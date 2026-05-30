@@ -1,13 +1,13 @@
 {
   "name": "openclaw-backend",
-  "version": "1.0.0",
+  "version": "2.0.0-alpha",
   "type": "module",
   "main": "server.js",
   "scripts": {
     "dev": "nodemon server.js",
     "build": "echo 'No build step needed for pure JS backend'",
     "start": "node server.js",
-    "test": "node --test test/**/*.test.js",
+    "test": "node --test test/",
     "db:migrate": "node db/migrate.js",
     "db:seed": "node db/seed.js"
   },

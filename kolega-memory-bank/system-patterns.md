@@ -117,6 +117,14 @@ signing-agent.service    (isolated signing subprocess, mlock)
 - Legacy directories are mapped automatically: `env/` → `secrets/`, `services/` → `config/`.
 - Cross-platform validation (Linux, macOS, Windows) is required before the backup is deleted.
 
+## Testing Patterns
+- **Backend tests** use Node.js built-in test runner (`node --test`).
+- **In-memory SQLite** (`:memory:`) initialized via `test/helpers/test-setup.js` for isolated DB tests.
+- **Provider tests** mock internal `_exec` / `_spawnVc` methods to avoid spawning real cryptsetup/veracrypt binaries.
+- **Security tests** spawn real subprocesses and inspect `/proc/<pid>/cmdline` to verify passwords never appear in process listings.
+- **Integration tests** exercise the full mount → validate → read → unmount cycle with temporary directories.
+- **Secret Server tests** use `pytest` + `FastAPI TestClient` with monkeypatched settings and temporary vault directories.
+
 ## Security Patterns
 - Passphrase piped to cryptsetup stdin (never shell-interpolated)
 - Passphrase cleared from memory immediately after unlock

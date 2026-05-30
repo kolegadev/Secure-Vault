@@ -1,21 +1,30 @@
 # OpenClaw Secure Vault
 
-A local browser-based utility that runs on a Raspberry Pi 5 and manages sensitive environment variables, API service documentation, and Agent SKILL.md files stored on a **LUKS-encrypted USB 3.0 drive**.
+A local browser-based utility that manages sensitive environment variables, API service documentation, and Agent SKILL.md files stored on a **VeraCrypt-encrypted USB drive**. Supports local mode (Linux, macOS, Windows) and an optional Pi5 Tailscale Secret Server for remote secret retrieval.
 
 ## Features
 
-- **LUKS Volume Management** — Create, unlock, lock, and manage LUKS2-encrypted USB drives via web UI
+- **VeraCrypt Volume Management** — Create, mount, and dismount VeraCrypt-encrypted USB drives via web UI (headless CLI, no GUI required)
 - **Environment Variable Dashboard** — Full CRUD with redaction, metadata, service linking, and auto-generated `.env` files
 - **SKILL.md Registry** — YAML frontmatter parsing, validation, Markdown preview, and OpenClaw path integration
 - **Service Management** — Register API services with Swagger URLs and auto-generate `README.md` documentation
 - **Real-time USB Monitoring** — WebSocket-based USB insertion/removal detection
-- **Secure Session Auth** — LUKS passphrase is the sole credential; server-side sessions with automatic expiry
+- **Secure Session Auth** — VeraCrypt passphrase is the sole credential; server-side sessions with automatic expiry
 - **Export & Backup** — Export `.env` files, skill archives, and full vault ZIP backups
+- **Pi5 Secret Server (Optional)** — FastAPI server over Tailscale with profile-based ACLs and a restricted Signing Agent
 
 ## Architecture
 
+### Local Mode
 ```
-Browser (React SPA) <-> Express API <-> cryptsetup / udev / mount <-> LUKS USB (ext4)
+Browser (React SPA) <-> Express API <-> VeraCrypt CLI <-> Encrypted USB (exFAT)
+```
+
+### Pi5 Secret Server Mode
+```
+Remote Client (Tailscale) <-> FastAPI Secret Server <-> Signing Agent
+                                        ↓
+                                VeraCrypt USB (exFAT)
 ```
 
 ## Required Dependencies
@@ -26,8 +35,7 @@ Browser (React SPA) <-> Express API <-> cryptsetup / udev / mount <-> LUKS USB (
 |---------|---------|
 | `node` >= 18.0.0 | Runtime |
 | `npm` >= 9.0.0 | Package manager |
-| `cryptsetup` / `cryptsetup-bin` | LUKS volume operations |
-| `udisks2` | USB block device helpers |
+| `veracrypt` | VeraCrypt CLI (Linux/macOS/Windows) |
 | `build-essential` | Native module compilation |
 | `sqlite3` | CLI database inspection (optional) |
 
@@ -52,7 +60,7 @@ sudo bash bin/setup.sh
 After setup completes:
 
 ```bash
-# Configure your USB device path
+# Configure your USB device path and provider
 sudo nano /opt/openclaw-vault/backend/.env
 
 # Start and enable the service
@@ -64,7 +72,7 @@ sudo systemctl enable openclaw-vault
 
 ```bash
 # 1. Install Node.js 20.x and system dependencies
-#    (cryptsetup, build-essential, etc.)
+#    (veracrypt, build-essential, etc.)
 
 # 2. Install all Node dependencies
 npm run install:all
@@ -91,11 +99,13 @@ Key environment variables:
 | `PORT` | `3001` | Express server port |
 | `HOST` | `0.0.0.0` | Bind address |
 | `SESSION_SECRET` | *(required)* | Min 32-char secret for session signing |
-| `LUKS_DEVICE_PATH` | `/dev/sdb1` | USB block device to encrypt/unlock |
-| `LUKS_MOUNT_POINT` | `/mnt/openclaw-vault` | Where the vault is mounted |
-| `LUKS_MAPPER_NAME` | `openclaw-vault` | Device mapper name |
+| `VAULT_PROVIDER` | `luks` | Backend: `luks` or `veracrypt` |
+| `VAULT_DEVICE_PATH` | `/dev/sdb1` | USB block device |
+| `VAULT_MOUNT_POINT` | `/mnt/securevault` | Where the vault is mounted |
 | `LOG_LEVEL` | `info` | Pino log level |
 | `LOG_PRETTY` | `true` | Pretty-print logs (disable in production) |
+
+For Secret Server configuration, see `secret-server/.env.example`.
 
 ## Starting and Stopping
 
@@ -144,6 +154,19 @@ sudo journalctl -u openclaw-vault -f
 sudo systemctl status openclaw-vault
 ```
 
+### Secret Server (Pi5)
+
+```bash
+# Start
+sudo systemctl start secret-server
+
+# View logs
+sudo journalctl -u secret-server -f
+
+# Check health
+curl http://100.x.x.x:8787/health
+```
+
 ## Project Structure
 
 ```
@@ -151,8 +174,8 @@ sudo systemctl status openclaw-vault
 ├── backend/              # Express API
 │   ├── server.js         # Entry point (HTTP + WebSocket)
 │   ├── db/               # SQLite schema & migrations
-│   ├── routes/           # API endpoints
-│   ├── services/         # LUKS, USB, file manager, skills, README generator
+│   ├── routes/           # API endpoints (/api/vault, /api/env, ...)
+│   ├── services/         # VaultProvider, USB monitor, file manager
 │   ├── middleware/       # Auth, rate limit, error handling
 │   └── config/           # Configuration loader
 ├── frontend/             # React SPA (Vite)
@@ -161,12 +184,25 @@ sudo systemctl status openclaw-vault
 │   │   ├── hooks/        # useApi, useVaultStatus
 │   │   └── styles/       # Tailwind CSS
 │   └── index.html
+├── secret-server/        # FastAPI Secret Server (Pi5)
+│   ├── src/secret_server/
+│   ├── deploy/           # systemd units & install script
+│   └── tests/            # pytest suite
 ├── bin/                  # Setup & utility scripts
 │   ├── setup.sh
-│   ├── usb-inserted.sh
-│   └── backup.sh
-├── systemd/              # systemd service unit
-│   └── openclaw-vault.service
+│   ├── migrate-luks-to-veracrypt.sh
+│   ├── securevault-veracrypt-mount
+│   └── securevault-veracrypt-unmount
+├── docs/                 # Documentation
+│   ├── veracrypt-setup.md
+│   ├── tailscale-setup.md
+│   ├── migration-guide.md
+│   ├── signing-agent.md
+│   └── api.md
+├── systemd/              # systemd service units
+│   ├── openclaw-vault.service
+│   ├── secret-server.service
+│   └── signing-agent.service
 └── package.json          # Root workspace orchestration
 ```
 
@@ -178,18 +214,29 @@ sudo systemctl status openclaw-vault
 | `npm run dev` | Start backend + frontend in dev mode |
 | `npm run build` | Build frontend for production |
 | `npm start` | Start production backend |
+| `cd backend && npm test` | Run backend test suite |
 | `cd backend && npm run db:migrate` | Run database migrations |
 | `sudo bash bin/setup.sh` | Full system deployment |
-| `sudo bash bin/backup.sh` | Backup LUKS header + disk image |
+| `sudo bash bin/migrate-luks-to-veracrypt.sh` | Migrate V1 LUKS → V2 VeraCrypt |
+
+## Documentation
+
+- [VeraCrypt Setup](docs/veracrypt-setup.md) — Install and configure VeraCrypt CLI
+- [Tailscale Setup](docs/tailscale-setup.md) — Configure Tailscale for Secret Server
+- [Migration Guide](docs/migration-guide.md) — LUKS to VeraCrypt migration
+- [Signing Agent](docs/signing-agent.md) — Architecture and protocol
+- [API Documentation](docs/api.md) — Secret Server endpoints
 
 ## Security Notes
 
-- **LUKS passphrase = sole credential** — no separate user system
-- Passphrase is piped directly to `cryptsetup` stdin; never logged or shell-interpolated
-- Dedicated `openclaw-vault` OS user with sudoers restricted to `cryptsetup`, `mount`, `umount`
+- **VeraCrypt passphrase = sole credential** — no separate user system
+- Passphrase is piped directly to `veracrypt` stdin; never logged or shell-interpolated
+- Dedicated `openclaw-vault` OS user with sudoers restricted to secure wrapper scripts
 - Rate limiting (5 logins/min, 100 API calls/min)
 - Secure `HttpOnly` session cookies with `SameSite=Strict`
 - Path traversal guards on all file operations
+- Secret Server binds to Tailscale IP only; refuses to serve secrets if vault is unmounted
+- Signing Agent returns signatures only — private keys never leave the Pi5
 
 ## License
 

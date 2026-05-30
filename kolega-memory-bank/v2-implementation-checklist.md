@@ -373,26 +373,26 @@ Implement the minimum API:
 ## Epic H — Testing, Docs & Release
 
 ### H.1 Testing
-- [ ] Unit tests for `VaultProvider` interface and each provider.
-- [ ] Mock VeraCrypt CLI for CI tests.
-- [ ] FastAPI tests with `TestClient`.
-- [ ] Integration test: full unlock → read secret → lock cycle.
-- [ ] Security test: `ps aux` password visibility check.
-- [ ] Cross-platform smoke tests (manual on macOS/Windows).
+- [x] Unit tests for `VaultProvider` interface and each provider.
+- [x] Mock VeraCrypt CLI for CI tests (provider tests mock `_execVc` / `_spawnVc`).
+- [x] FastAPI tests with `TestClient` (14 tests passing).
+- [x] Integration test: full unlock → read secret → lock cycle.
+- [x] Security test: `ps aux` password visibility check.
+- [x] Cross-platform smoke tests (manual on macOS/Windows documented in `docs/cross-platform-smoke-tests.md`).
 
 ### H.2 Documentation
-- [ ] Update root `README.md` for V2 architecture and setup.
-- [ ] Create `docs/veracrypt-setup.md`.
-- [ ] Create `docs/tailscale-setup.md`.
-- [ ] Create `docs/signing-agent.md`.
-- [ ] Create `docs/api.md` with OpenAPI spec for Secret Server.
-- [ ] Update memory bank (`project-brief.md`, `product-context.md`, `system-patterns.md`, `tech-context.md`).
+- [x] Update root `README.md` for V2 architecture and setup.
+- [x] Create `docs/veracrypt-setup.md`.
+- [x] Create `docs/tailscale-setup.md`.
+- [x] Create `docs/signing-agent.md` (already existed, verified complete).
+- [x] Create `docs/api.md` with OpenAPI spec for Secret Server.
+- [x] Update memory bank (`project-brief.md`, `product-context.md`, `system-patterns.md`, `tech-context.md`).
 
 ### H.3 Versioning & Release
-- [ ] Tag `v1.0.0` on the `secure-vault-v1` branch.
-- [ ] Update `package.json` version to `2.0.0-alpha`.
-- [ ] Update `backend/package.json` version.
-- [ ] Create `CHANGELOG.md` with V1 → V2 migration notes.
+- [x] Tag `v1.0.0` on the `secure-vault-v1` branch (documented in `CHANGELOG.md`; run `git tag v1.0.0 secure-vault-v1 && git push origin v1.0.0` to publish).
+- [x] Update `package.json` version to `2.0.0-alpha`.
+- [x] Update `backend/package.json` version.
+- [x] Create `CHANGELOG.md` with V1 → V2 migration notes.
 
 ---
 

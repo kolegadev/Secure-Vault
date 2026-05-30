@@ -72,12 +72,15 @@ export class VaultProvider {
     if (!pathComponent || typeof pathComponent !== 'string') {
       return null;
     }
-    const sanitized = pathComponent.replace(/\.\./g, '').replace(/[/\\]/g, '');
+    // Reject traversal attempts and path separators outright
+    if (pathComponent.includes('..') || pathComponent.includes('/') || pathComponent.includes('\\')) {
+      return null;
+    }
     const allowedChars = /^[a-zA-Z0-9.\-_]+$/;
-    if (!allowedChars.test(sanitized)) return null;
-    if (sanitized.includes('\0') || /[\x00-\x1F\x7F]/.test(sanitized)) return null;
-    if (sanitized.trim() === '') return null;
-    return sanitized;
+    if (!allowedChars.test(pathComponent)) return null;
+    if (pathComponent.includes('\0') || /[\x00-\x1F\x7F]/.test(pathComponent)) return null;
+    if (pathComponent.trim() === '') return null;
+    return pathComponent;
   }
 
   _getDefaultMountPoint() {
