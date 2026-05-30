@@ -1,0 +1,27 @@
+[Unit]
+Description=OpenClaw Signing Agent
+After=openclaw-vault.service tailscaled.service
+Requires=openclaw-vault.service
+
+[Service]
+Type=simple
+User=signingagent
+Group=signingagent
+RuntimeDirectory=signing-agent
+ExecStart=/opt/secret-server/venv/bin/python -m secret_server.signing.agent_service
+Restart=on-failure
+RestartSec=5
+AmbientCapabilities=CAP_IPC_LOCK
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target

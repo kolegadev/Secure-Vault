@@ -1,34 +1,40 @@
 #!/bin/bash
-set -euo pipefail
+set -e
 
 INSTALL_DIR="/opt/secret-server"
-SERVICE_FILE="/etc/systemd/system/secret-server.service"
-USER_NAME="secretserver"
+SERVICE_USER="secretserver"
+SIGNING_USER="signingagent"
 
-echo "==> Installing OpenClaw Secret Server..."
+echo "Installing OpenClaw Secret Server..."
 
-# Create dedicated user
-if ! id -u "$USER_NAME" &>/dev/null; then
-    sudo useradd --system --no-create-home --shell /usr/sbin/nologin "$USER_NAME"
+# Create users
+if ! id -u "$SERVICE_USER" &>/dev/null; then
+    useradd --system --no-create-home --shell /usr/sbin/nologin "$SERVICE_USER"
 fi
 
-# Copy application files
-sudo mkdir -p "$INSTALL_DIR"
-sudo cp -r src requirements.txt pyproject.toml README.md "$INSTALL_DIR/"
+if ! id -u "$SIGNING_USER" &>/dev/null; then
+    useradd --system --no-create-home --shell /usr/sbin/nologin "$SIGNING_USER"
+fi
 
-# Create virtual environment and install dependencies
-sudo python3 -m venv "$INSTALL_DIR/venv"
-sudo "$INSTALL_DIR/venv/bin/pip" install --upgrade pip
-sudo "$INSTALL_DIR/venv/bin/pip" install -r "$INSTALL_DIR/requirements.txt"
+# Create install directory
+mkdir -p "$INSTALL_DIR"
+cp -r . "$INSTALL_DIR"
+cd "$INSTALL_DIR"
 
-# Set ownership
-sudo chown -R "$USER_NAME:$USER_NAME" "$INSTALL_DIR"
+# Create virtual environment
+python3 -m venv venv
+venv/bin/pip install --upgrade pip
+venv/bin/pip install -r requirements.txt
 
-# Install systemd service
-sudo cp deploy/secret-server.service "$SERVICE_FILE"
-sudo systemctl daemon-reload
-sudo systemctl enable secret-server.service
+# Install systemd services
+cp deploy/secret-server.service /etc/systemd/system/
+cp deploy/signing-agent.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable secret-server.service
+systemctl enable signing-agent.service
 
-echo "==> Installation complete."
-echo "    Ensure the vault is mounted, then run:"
-echo "    sudo systemctl start secret-server"
+echo "Installation complete."
+echo "Start services with:"
+echo "  systemctl start openclaw-vault.service"
+echo "  systemctl start secret-server.service"
+echo "  systemctl start signing-agent.service"

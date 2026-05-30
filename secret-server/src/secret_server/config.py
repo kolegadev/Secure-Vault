@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     # Auth
     profiles_file: str = "auth/profiles.json"
 
+    # Signing Agent
+    signing_agent_socket: str = "/run/signing-agent/signing.sock"
+    signing_rate_limit_per_minute: int = 10
+    use_signing_agent: bool = True
+
     # Logging
     log_level: str = "INFO"
 

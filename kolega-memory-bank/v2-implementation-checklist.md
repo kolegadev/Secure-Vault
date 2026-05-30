@@ -313,26 +313,26 @@ Implement the minimum API:
 **Goal**: Private keys never leave the Pi5; clients send hashes, Pi5 returns signatures.
 
 ### F.1 Signing Agent Process
-- [ ] `src/secret_server/signing/agent.py` runs as a separate restricted subprocess.
-- [ ] Load keys only after vault mount.
-- [ ] Locked memory where available (`mlock` equivalent via `ctypes` or `secure-memory` package).
-- [ ] Disable swap on Pi5 if practical (document in setup).
+- [x] `src/secret_server/signing/agent.py` runs as a separate restricted subprocess.
+- [x] Load keys only after vault mount.
+- [x] Locked memory where available (`mlock` equivalent via `ctypes` or `secure-memory` package).
+- [x] Disable swap on Pi5 if practical (document in setup).
 
 ### F.2 Sign-Only Endpoints
-- [ ] `POST /sign/polymarket`
+- [x] `POST /sign/polymarket`
   - Request: `{ payload_hash, market, purpose }`
   - Response: `{ signature, signer }`
-- [ ] `POST /sign/{key_id}` (generic signing endpoint).
+- [x] `POST /sign/{key_id}` (generic signing endpoint).
 
 ### F.3 Audit & Rate Limiting
-- [ ] Log every request: timestamp, client identity, public wallet, purpose, payload hash.
-- [ ] Never log full payload if sensitive.
-- [ ] Rate limit: max N signatures per minute per client.
+- [x] Log every request: timestamp, client identity, public wallet, purpose, payload hash.
+- [x] Never log full payload if sensitive.
+- [x] Rate limit: max N signatures per minute per client.
 
 ### F.4 systemd Service
-- [ ] `deploy/signing-agent.service` unit.
-- [ ] Starts only after vault is mounted.
-- [ ] Runs as restricted user, even more locked down than secret-server.
+- [x] `deploy/signing-agent.service` unit.
+- [x] Starts only after vault is mounted.
+- [x] Runs as restricted user, even more locked down than secret-server.
 
 **Acceptance Criteria**
 - Trading bot submits hash → Pi5 returns signature in milliseconds after warm start.

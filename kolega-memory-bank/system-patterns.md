@@ -49,7 +49,8 @@ When the VeraCrypt USB is plugged into a Raspberry Pi 5, a dedicated FastAPI ser
 | Vault API | Mount status and manifest | GET /vault/status |
 | Skills API | List and read SKILL.md files | GET /skills, /skills/{tool}/{file} |
 | Secrets API | Profile listing and runtime env | GET /profiles, POST /secrets/runtime-env |
-| Signing API | Hash-in, signature-out | POST /sign/polymarket, POST /sign/{key_id} |
+| Signing API | Hash-in, signature-out (proxies to signing agent) | POST /sign/polymarket, POST /sign/{key_id} |
+| Signing Agent | Restricted subprocess, mlock, Unix socket | Internal JSON-over-socket protocol |
 | Admin API | Reload vault profiles/config | POST /admin/reload |
 
 ### Security Patterns (Secret Server)
@@ -57,8 +58,10 @@ When the VeraCrypt USB is plugged into a Raspberry Pi 5, a dedicated FastAPI ser
 - Structured logging via `structlog` — passwords and secrets are never logged.
 - VeraCrypt password passed via `stdin` only (`subprocess.Popen` with `stdin=PIPE`); never via CLI args.
 - Private keys loaded from `<mount>/crypto/` and cleared from memory after signing.
+- **Signing Agent isolation** — `signing/agent_service.py` runs as a separate restricted subprocess communicating over a Unix domain socket. It enforces `mlock` on key material (best-effort) and runs under a dedicated `signingagent` user with stricter systemd hardening than the main server.
+- Per-client rate limiting on signing endpoints (default 10 req/min).
 - Every signing request is audited to `<mount>/audit/signing.log`.
-- systemd hardening: `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome=true`, `PrivateTmp=true`.
+- systemd hardening: `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome=true`, `PrivateTmp=true`, `MemoryDenyWriteExecute`, `AmbientCapabilities=CAP_IPC_LOCK` (signing agent).
 
 ## VaultProvider Pattern
 - Routes and middleware consume `VaultProviderFactory.getProvider()` — never import `luksManager.js` directly.

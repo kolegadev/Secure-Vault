@@ -68,6 +68,8 @@ pip install -r requirements.txt
 SECRET_SERVER_TAILSCALE_ONLY=false uvicorn secret_server.main:app --host 127.0.0.1 --port 8000
 # Production (binds to Tailscale IP automatically)
 python -m secret_server.run
+# Signing agent (standalone subprocess)
+SECRET_SERVER_USE_SIGNING_AGENT=true python -m secret_server.signing.agent_service
 # Tests
 pytest tests/
 ```
@@ -155,13 +157,18 @@ pytest tests/
 │   │   │   ├── client_auth.py # API key validation + profile ACLs
 │   │   │   └── profiles.py    # Pydantic models for client/profile config
 │   │   └── signing/
-│   │       ├── agent.py       # Signer (hash in, signature out)
+│   │       ├── agent.py       # Signer (hash in, signature out) with mlock
+│   │       ├── agent_service.py # Standalone asyncio signing agent (Unix socket)
+│   │       ├── rate_limiter.py  # Sliding-window in-memory rate limiter
 │   │       └── audit.py       # Signing request audit logger
 │   ├── deploy/
 │   │   ├── secret-server.service  # Hardened systemd unit
-│   │   └── install.sh             # Pi5 install script
+│   │   ├── signing-agent.service  # Hardened signing-agent systemd unit
+│   │   └── install.sh             # Pi5 install script (both services)
 │   ├── tests/
-│   │   └── test_api.py        # FastAPI TestClient tests
+│   │   ├── test_api.py        # FastAPI TestClient tests
+│   │   ├── test_signer.py     # Signer unit tests
+│   │   └── test_rate_limiter.py # Rate limiter unit tests
 │   ├── pyproject.toml         # Python packaging
 │   ├── requirements.txt       # Production dependencies
 │   └── README.md              # Secret Server documentation
@@ -174,7 +181,8 @@ pytest tests/
 │   ├── securevault-veracrypt-mount   # Sudoers-safe VeraCrypt mount wrapper
 │   └── securevault-veracrypt-unmount # Sudoers-safe VeraCrypt unmount wrapper
 ├── docs/
-│   └── migration-guide.md            # LUKS → VeraCrypt migration documentation
+│   ├── migration-guide.md            # LUKS → VeraCrypt migration documentation
+│   └── signing-agent.md              # Signing Agent architecture & protocol
 ├── systemd/
 │   └── openclaw-vault.service # Hardened systemd unit
 ├── package.json               # Root workspace orchestration
@@ -232,6 +240,8 @@ pytest tests/
 - Pino redaction for all secret fields
 - Secret Server passwords passed via `subprocess.Popen(stdin=PIPE)` only; never as CLI args
 - Secret Server private keys loaded from vault `crypto/` and cleared from memory after signing
+- Secret Server signing agent runs as separate restricted subprocess with `mlock` on key material
+- Secret Server rate limiting on signing endpoints (per-client, 10 req/min default)
 - Secret Server audit log: every signing request logged to `audit/signing.log`
 
 ## Dev Notes

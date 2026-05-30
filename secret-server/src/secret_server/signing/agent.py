@@ -1,6 +1,33 @@
+import ctypes
 import hashlib
 import hmac
 import os
+import sys
+
+
+def _mlock_buffer(buf: bytearray) -> bool:
+    """Best-effort memory lock for Linux."""
+    if sys.platform != "linux":
+        return False
+    try:
+        libc = ctypes.CDLL("libc.so.6")
+        ptr = ctypes.addressof(ctypes.c_char.from_buffer(buf))
+        ret = libc.mlock(ctypes.c_void_p(ptr), ctypes.c_size_t(len(buf)))
+        return ret == 0
+    except Exception:
+        return False
+
+
+def _munlock_buffer(buf: bytearray) -> bool:
+    if sys.platform != "linux":
+        return False
+    try:
+        libc = ctypes.CDLL("libc.so.6")
+        ptr = ctypes.addressof(ctypes.c_char.from_buffer(buf))
+        ret = libc.munlock(ctypes.c_void_p(ptr), ctypes.c_size_t(len(buf)))
+        return ret == 0
+    except Exception:
+        return False
 
 
 class Signer:
@@ -26,14 +53,23 @@ class Signer:
         with open(key_path, "r") as f:
             private_key = f.read().strip()
 
+        key_bytes = bytearray(private_key.encode("utf-8"))
+        _mlock_buffer(key_bytes)
+        payload_bytes = bytearray(payload_hash.encode("utf-8"))
         try:
             sig = hmac.new(
-                private_key.encode("utf-8"),
-                payload_hash.encode("utf-8"),
+                key_bytes,
+                payload_bytes,
                 hashlib.sha256,
             ).hexdigest()
         finally:
-            # Best-effort clear from memory
+            # Overwrite sensitive buffers
+            for i in range(len(key_bytes)):
+                key_bytes[i] = 0
+            _munlock_buffer(key_bytes)
+            del key_bytes
+            del payload_bytes
+            # Best-effort clear of the immutable string reference
             private_key = "0" * len(private_key)
             del private_key
 
