@@ -9,9 +9,9 @@ import {
   parseSkillMarkdown,
 } from '../services/skillScanner.js';
 import { writeFile, readFile } from '../services/fileManager.js';
+import { normalizeSkillPath } from '../services/vaultPaths.js';
 import path from 'path';
 import { config } from '../config/index.js';
-import fs from 'fs';
 
 const router = Router();
 
@@ -53,7 +53,8 @@ router.get('/:id', requireAuth, requireVaultMounted, (req, res, next) => {
     let frontmatter = null;
     let body = '';
     try {
-      const content = readFile(row.path);
+      const skillPath = normalizeSkillPath(row.path);
+      const content = readFile(skillPath);
       const parsed = parseSkillMarkdown(content);
       frontmatter = parsed.frontmatter;
       body = parsed.body;
@@ -95,28 +96,21 @@ router.post('/', requireAuth, requireVaultMounted, (req, res, next) => {
     // Sanitize directory parameter to prevent path traversal
     const rawSkillDir = directory || name.toLowerCase().replace(/\s+/g, '-');
     const sanitizedDir = path.basename(rawSkillDir);
-    
+
     // Construct the intended skills directory path
-    const skillsBasePath = path.resolve(config.luks.mountPoint, config.paths.skillsDir);
     const relativePath = path.join(config.paths.skillsDir, sanitizedDir, 'SKILL.md');
-    const fullPath = path.join(config.luks.mountPoint, relativePath);
-    const resolvedPath = path.resolve(fullPath);
 
     // Ensure the resolved path is within the skills directory
-    if (!resolvedPath.startsWith(skillsBasePath + path.sep) && resolvedPath !== skillsBasePath) {
-      return res.status(400).json({ 
-        success: false, 
-        error: { code: 'INVALID_PATH', message: 'Invalid directory path' } 
+    const resolvedRelative = path.normalize(relativePath);
+    const skillsPrefix = path.normalize(config.paths.skillsDir);
+    if (!resolvedRelative.startsWith(skillsPrefix + path.sep) && resolvedRelative !== skillsPrefix) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_PATH', message: 'Invalid directory path' }
       });
     }
 
-    // Ensure directory exists
-    const dir = path.dirname(resolvedPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-
-    fs.writeFileSync(resolvedPath, content, 'utf-8');
+    writeFile(relativePath, content);
 
     // Parse frontmatter for DB
     const parsed = parseSkillMarkdown(content);
@@ -127,10 +121,10 @@ router.post('/', requireAuth, requireVaultMounted, (req, res, next) => {
     const result = db.prepare(`
       INSERT INTO skills (name, description, path, frontmatter, metadata)
       VALUES (?, ?, ?, ?, ?)
-    `).run(name, description || null, resolvedPath, frontmatterJson, metadataJson);
+    `).run(name, description || null, relativePath, frontmatterJson, metadataJson);
 
     logger.info({ id: result.lastInsertRowid, name }, 'Skill created');
-    res.status(201).json({ success: true, data: { id: result.lastInsertRowid, name, path: resolvedPath } });
+    res.status(201).json({ success: true, data: { id: result.lastInsertRowid, name, path: relativePath } });
   } catch (err) {
     next(err);
   }
@@ -147,7 +141,8 @@ router.put('/:id', requireAuth, requireVaultMounted, (req, res, next) => {
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Skill not found' } });
     }
 
-    fs.writeFileSync(skill.path, content, 'utf-8');
+    const skillPath = normalizeSkillPath(skill.path);
+    writeFile(skillPath, content);
 
     const parsed = parseSkillMarkdown(content);
     const frontmatterJson = parsed.frontmatter ? JSON.stringify(parsed.frontmatter) : null;

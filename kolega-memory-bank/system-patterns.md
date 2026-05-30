@@ -24,7 +24,8 @@
 - **VaultProviderFactory** (`backend/services/VaultProviderFactory.js`): Returns `LuksProvider` or `VeraCryptProvider` based on config/env
 - **LuksProvider** (`backend/services/providers/LuksProvider.js`): LUKS/cryptsetup adapter (legacy)
 - **VeraCryptProvider** (`backend/services/providers/VeraCryptProvider.js`): VeraCrypt CLI adapter (cross-platform)
-- **usbMonitor.js**: udev event listener
+- **vaultPaths.js**: Central path resolver for cross-platform mount-point resolution
+- **usbMonitor.js**: udev event listener (Linux); delegates to `VaultProvider.detectDevices()` on macOS/Windows
 - **fileManager.js**: Safe file operations on mounted vault
 - **readmeGenerator.js**: README.md template engine
 - **skillScanner.js**: SKILL.md discovery & YAML frontmatter parser
@@ -34,6 +35,13 @@
 - `mountVault(devicePath, mountPoint, password)` unlocks + mounts via stdin password passing.
 - `unmountVault(mountPoint)` dismounts + locks safely (busy-file detection).
 - Shared filesystem helpers (`validateVaultStructure`, `readVaultManifest`, `listSecrets`, `listSkills`) live in the abstract base class.
+
+## vaultPaths Pattern
+- All vault file paths are resolved through `backend/services/vaultPaths.js` rather than hardcoded `config.luks.mountPoint`.
+- `getMountPoint()` priority: `config.vault.mountPoint` → `config.luks.mountPoint` → platform default (`platforms.js`).
+- `resolveVaultPath(relativePath)` enforces traversal guards against the active mount point.
+- `normalizeStoredPath(storedPath, dirKey)` converts legacy V1 absolute paths to relative paths for cross-platform portability.
+- Skills database stores **relative** paths so they remain valid when the vault is mounted on Linux (`/mnt/securevault`), macOS (`/Volumes/SecureVault`), or Windows (`S:`).
 
 ## Authentication Pattern
 - Session-based (not JWT) — stateful local system

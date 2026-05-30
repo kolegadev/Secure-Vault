@@ -2,37 +2,11 @@ import fs from 'fs';
 import path from 'path';
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
-
-/**
- * Resolve a path within the vault mount point.
- * Rejects paths that escape the vault directory.
- * @param {string} relativePath
- * @returns {string}
- * @throws {Error} If path traversal is detected
- */
-function resolveVaultPath(relativePath) {
-  const mountPoint = config.luks.mountPoint;
-  const resolved = path.resolve(mountPoint, relativePath);
-  const normalizedMount = path.resolve(mountPoint);
-
-  if (!resolved.startsWith(normalizedMount)) {
-    throw new Error('Path traversal detected: path escapes vault directory');
-  }
-
-  return resolved;
-}
-
-/**
- * Check if vault is mounted before file operations.
- * @throws {Error} If vault is not mounted
- */
-function requireMounted() {
-  try {
-    fs.accessSync(config.luks.mountPoint, fs.constants.F_OK);
-  } catch {
-    throw new Error('Vault is not mounted');
-  }
-}
+import {
+  getMountPoint,
+  resolveVaultPath,
+  requireMounted,
+} from './vaultPaths.js';
 
 /**
  * Read a file from the vault.
@@ -55,9 +29,7 @@ export function writeFile(filePath, content) {
   requireMounted();
 
   // Additional security check: ensure path is within allowed subdirectories.
-  // Allowed dirs = configured vault subdirs (env/skills/services/exports/...) plus
-  // legacy user-content dirs.
-  const relativePath = path.relative(config.luks.mountPoint, fullPath);
+  const relativePath = path.relative(getMountPoint(), fullPath);
   const pathParts = relativePath.split(path.sep).filter(p => p);
   const configuredDirs = Object.entries(config.paths)
     .filter(([k]) => k.endsWith('Dir'))
@@ -65,6 +37,7 @@ export function writeFile(filePath, content) {
   const allowedDirs = new Set([
     ...configuredDirs,
     'documents', 'exports', 'uploads', 'backups', 'user-files',
+    'env', 'services', // Legacy V1 directory names for backward compatibility
   ]);
 
   if (pathParts.length > 0 && !allowedDirs.has(pathParts[0])) {
@@ -110,21 +83,21 @@ const PROTECTED_DIRECTORIES = [
  */
 function isProtectedPath(filePath) {
   const normalizedPath = path.normalize(filePath).replace(/^\/+/, '');
-  
+
   // Check exact matches for protected files
   for (const protectedFile of PROTECTED_FILES) {
     if (normalizedPath === protectedFile || normalizedPath.endsWith('/' + protectedFile)) {
       return true;
     }
   }
-  
+
   // Check if path starts with protected directory
   for (const protectedDir of PROTECTED_DIRECTORIES) {
     if (normalizedPath === protectedDir || normalizedPath.startsWith(protectedDir + '/')) {
       return true;
     }
   }
-  
+
   return false;
 }
 
@@ -144,14 +117,14 @@ export function deleteFile(filePath) {
 
   const fullPath = resolveVaultPath(filePath);
   requireMounted();
-  
+
   // Verify file exists before attempting deletion
   if (!fs.existsSync(fullPath)) {
     const error = new Error(`File not found: ${filePath}`);
     error.code = 'ENOENT';
     throw error;
   }
-  
+
   // Check if it's a directory and prevent accidental directory deletion
   const stat = fs.statSync(fullPath);
   if (stat.isDirectory()) {
@@ -159,7 +132,7 @@ export function deleteFile(filePath) {
     error.code = 'EISDIR';
     throw error;
   }
-  
+
   fs.unlinkSync(fullPath);
   logger.info({ path: filePath }, 'File deleted from vault');
 }

@@ -4,6 +4,7 @@ import YAML from 'yaml';
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
 import { getDatabase } from '../db/connection.js';
+import { getMountPoint, getVaultSubdir, normalizeSkillPath, resolveVaultPath } from './vaultPaths.js';
 
 /**
  * Extract YAML frontmatter and body from markdown content.
@@ -146,19 +147,23 @@ function autoLinkServicesAndEnvVars(db, skillId, skillName, frontmatter) {
 
 /**
  * Scan vault skills directory and sync to database.
+ * Stores relative paths so they remain valid across mount-point changes.
  * @returns {Promise<{scanned: number, added: number, updated: number, errors: number}>}
  */
 export async function syncSkillsToDatabase() {
   const db = getDatabase();
-  const skillsDir = path.join(config.luks.mountPoint, config.paths.skillsDir);
+  const skillsDir = getVaultSubdir('skillsDir');
 
-  if (!fs.existsSync(skillsDir)) {
-    fs.mkdirSync(skillsDir, { recursive: true });
+  if (!skillsDir || !fs.existsSync(skillsDir)) {
+    if (skillsDir) {
+      fs.mkdirSync(skillsDir, { recursive: true });
+    }
     return { scanned: 0, added: 0, updated: 0, errors: 0 };
   }
 
   const skills = scanSkillsDirectory(skillsDir, skillsDir);
-  const existingPaths = db.prepare('SELECT path FROM skills').all().map(r => r.path);
+  const existingRows = db.prepare('SELECT path FROM skills').all();
+  const existingPaths = existingRows.map(r => normalizeSkillPath(r.path));
   const scannedPaths = new Set();
   let added = 0;
   let updated = 0;
@@ -179,10 +184,12 @@ export async function syncSkillsToDatabase() {
   `);
 
   for (const skill of skills) {
-    scannedPaths.add(skill.path);
+    const relativePath = skill.relativePath;
+    scannedPaths.add(relativePath);
+
     const validation = validateFrontmatter(skill.frontmatter);
 
-    const name = skill.frontmatter?.name || path.basename(path.dirname(skill.path));
+    const name = skill.frontmatter?.name || path.basename(path.dirname(skill.relativePath));
     const description = skill.frontmatter?.description || '';
     const frontmatterJson = skill.frontmatter ? JSON.stringify(skill.frontmatter) : null;
     const metadataJson = skill.frontmatter?.openclaw
@@ -191,12 +198,14 @@ export async function syncSkillsToDatabase() {
 
     try {
       let skillId;
-      if (existingPaths.includes(skill.path)) {
-        updateStmt.run(name, description, frontmatterJson, metadataJson, skill.path);
+      if (existingPaths.includes(relativePath)) {
+        // Update by matching either relative or absolute legacy path
+        const legacyMatch = existingRows.find(r => normalizeSkillPath(r.path) === relativePath);
+        updateStmt.run(name, description, frontmatterJson, metadataJson, legacyMatch.path);
         updated++;
-        skillId = db.prepare('SELECT id FROM skills WHERE path = ?').get(skill.path)?.id;
+        skillId = db.prepare('SELECT id FROM skills WHERE path = ?').get(legacyMatch.path)?.id;
       } else {
-        const result = insertStmt.run(name, description, skill.path, frontmatterJson, metadataJson);
+        const result = insertStmt.run(name, description, relativePath, frontmatterJson, metadataJson);
         skillId = result.lastInsertRowid;
         added++;
       }
@@ -204,7 +213,7 @@ export async function syncSkillsToDatabase() {
         autoLinkServicesAndEnvVars(db, skillId, name, skill.frontmatter);
       }
     } catch (error) {
-      logger.error({ error, path: skill.path }, 'Failed to sync skill');
+      logger.error({ error, path: skill.relativePath }, 'Failed to sync skill');
       errors++;
     }
   }
@@ -226,12 +235,19 @@ export async function installSkill(skillId) {
     return { success: false, message: 'Skill not found' };
   }
 
-  // Validate that the skill path is within the expected skills directory
-  const skillsDir = path.resolve(path.join(config.luks.mountPoint, config.paths.skillsDir));
-  const resolvedSkillPath = path.resolve(skill.path);
-  
+  // Normalize path and validate that it resolves within the vault skills directory
+  const skillPath = normalizeSkillPath(skill.path);
+  let resolvedSkillPath;
+  try {
+    resolvedSkillPath = resolveVaultPath(skillPath);
+  } catch (error) {
+    logger.error({ skillPath, error }, 'Skill path resolution failed');
+    return { success: false, message: 'Invalid skill path' };
+  }
+
+  const skillsDir = path.resolve(getVaultSubdir('skillsDir'));
   if (!resolvedSkillPath.startsWith(skillsDir + path.sep) && resolvedSkillPath !== skillsDir) {
-    logger.error({ skillPath: skill.path, skillsDir }, 'Skill path is outside of allowed directory');
+    logger.error({ skillPath: resolvedSkillPath, skillsDir }, 'Skill path is outside of allowed directory');
     return { success: false, message: 'Invalid skill path: outside of allowed directory' };
   }
 
@@ -277,12 +293,19 @@ export async function uninstallSkill(skillId) {
     return { success: false, message: 'Skill not found' };
   }
 
-  // Validate that the skill path is within the expected skills directory
-  const skillsDir = path.resolve(path.join(config.luks.mountPoint, config.paths.skillsDir));
-  const resolvedSkillPath = path.resolve(skill.path);
-  
+  // Normalize path and validate that it resolves within the vault skills directory
+  const skillPath = normalizeSkillPath(skill.path);
+  let resolvedSkillPath;
+  try {
+    resolvedSkillPath = resolveVaultPath(skillPath);
+  } catch (error) {
+    logger.error({ skillPath, error }, 'Skill path resolution failed');
+    return { success: false, message: 'Invalid skill path' };
+  }
+
+  const skillsDir = path.resolve(getVaultSubdir('skillsDir'));
   if (!resolvedSkillPath.startsWith(skillsDir + path.sep) && resolvedSkillPath !== skillsDir) {
-    logger.error({ skillPath: skill.path, skillsDir }, 'Skill path is outside of allowed directory');
+    logger.error({ skillPath: resolvedSkillPath, skillsDir }, 'Skill path is outside of allowed directory');
     return { success: false, message: 'Invalid skill path: outside of allowed directory' };
   }
 

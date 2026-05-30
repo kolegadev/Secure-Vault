@@ -171,22 +171,22 @@ This checklist tracks the conversion of Secure Vault from a Linux-only LUKS-back
 **Goal**: USB plugged into any supported machine works locally without Tailscale.
 
 ### D.1 Local Path Resolution
-- [ ] Create `backend/services/vaultPaths.js`.
+- [x] Create `backend/services/vaultPaths.js`.
   - Returns correct base path given current platform and mount state.
   - Linux: `/mnt/securevault`
   - macOS: `/Volumes/SecureVault`
   - Windows: `S:\`
 
 ### D.2 Preserve Existing Workflows
-- [ ] Ensure `/api/env/*` CRUD reads/writes from the mounted vault via `fileManager.js`.
-- [ ] Ensure `/api/skills/*` reads from `<mount>/skills/`.
-- [ ] Ensure `/api/files/*` reads from `<mount>/secrets/`.
-- [ ] Ensure README generation uses `<mount>/services/`.
-- [ ] Ensure export service bundles from the vault root.
+- [x] Ensure `/api/env/*` CRUD reads/writes from the mounted vault via `fileManager.js`.
+- [x] Ensure `/api/skills/*` reads from `<mount>/skills/`.
+- [x] Ensure `/api/files/*` reads from `<mount>/secrets/`.
+- [x] Ensure README generation uses `<mount>/config/` (canonical V2 name; servicesDir mapped to `config`).
+- [x] Ensure export service bundles from the vault root.
 
 ### D.3 USB Detection Update
-- [ ] Update `backend/services/usbMonitor.js` to detect VeraCrypt-ready removable devices.
-- [ ] Keep WebSocket `/ws/usb-status` emitting the same events.
+- [x] Update `backend/services/usbMonitor.js` to detect VeraCrypt-ready removable devices.
+- [x] Keep WebSocket `/ws/usb-status` emitting the same events.
 
 **Acceptance Criteria**
 - USB plugged into a Mac or Linux machine triggers the same UI workflow as V1.

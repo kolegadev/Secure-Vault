@@ -3,9 +3,11 @@ import { EventEmitter } from 'events';
 import path from 'path';
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
+import { VaultProviderFactory } from './VaultProviderFactory.js';
 
 /**
  * USB device monitor using udevadm or fallback to polling /dev/disk/by-id.
+ * On non-Linux platforms delegates to the active VaultProvider's detectDevices().
  * Emits events: 'attached', 'detached', 'error'.
  */
 class USBMonitor extends EventEmitter {
@@ -15,6 +17,7 @@ class USBMonitor extends EventEmitter {
     this.pollingInterval = null;
     this.knownDevices = new Set();
     this.isRunning = false;
+    this.platform = process.platform;
   }
 
   start() {
@@ -23,11 +26,16 @@ class USBMonitor extends EventEmitter {
 
     logger.info('Starting USB monitor...');
 
-    // Try udevadm monitor first; fallback to polling
-    this.tryUdevMonitor().catch(() => {
-      logger.warn('udevadm monitor unavailable, falling back to polling');
-      this.startPolling();
-    });
+    if (this.platform === 'linux') {
+      // Try udevadm monitor first; fallback to polling
+      this.tryUdevMonitor().catch(() => {
+        logger.warn('udevadm monitor unavailable, falling back to polling');
+        this.startPolling();
+      });
+    } else {
+      // macOS / Windows: poll via VaultProvider.detectDevices()
+      this.startProviderPolling();
+    }
   }
 
   stop() {
@@ -135,6 +143,50 @@ class USBMonitor extends EventEmitter {
   }
 
   /**
+   * Cross-platform polling using VaultProvider.detectDevices().
+   * Used on macOS and Windows where udevadm is not available.
+   */
+  startProviderPolling() {
+    this.pollingInterval = setInterval(() => {
+      this.pollProviderDevices().catch(err => logger.error({ error: err }, 'Provider USB poll error'));
+    }, config.usb.pollIntervalMs || 2000);
+  }
+
+  async pollProviderDevices() {
+    try {
+      const provider = VaultProviderFactory.getProvider();
+      const devices = await provider.detectDevices();
+      const currentDevices = new Set(devices.map(d => d.path));
+
+      // Detect additions
+      for (const device of devices) {
+        if (!this.knownDevices.has(device.path)) {
+          this.emit('attached', {
+            type: 'usb',
+            device: device.name || 'unknown',
+            timestamp: new Date().toISOString(),
+          });
+        }
+      }
+
+      // Detect removals
+      for (const devicePath of this.knownDevices) {
+        if (!currentDevices.has(devicePath)) {
+          this.emit('detached', {
+            type: 'usb',
+            device: path.basename(devicePath),
+            timestamp: new Date().toISOString(),
+          });
+        }
+      }
+
+      this.knownDevices = currentDevices;
+    } catch (error) {
+      logger.error({ error }, 'Provider device detection failed');
+    }
+  }
+
+  /**
    * Internal method - returns raw USB device data with sensitive information.
    * WARNING: For internal USBMonitor use only. Do NOT expose via API.
    * Contains sensitive paths and identifiers that should not be disclosed.
@@ -189,7 +241,7 @@ class USBMonitor extends EventEmitter {
       type: 'usb',
       // Deliberately omitting sensitive information:
       // - name (prevents fingerprinting)
-      // - path (prevents system structure disclosure) 
+      // - path (prevents system structure disclosure)
       // - size (prevents hardware profiling)
     };
   }

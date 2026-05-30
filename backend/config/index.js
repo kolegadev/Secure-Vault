@@ -53,6 +53,14 @@ function loadConfig() {
     cfg.vault = { ...cfg.vault, provider: process.env.VAULT_PROVIDER };
   }
 
+  // Vault path overrides (V2 canonical)
+  if (process.env.VAULT_MOUNT_POINT) {
+    cfg.vault = { ...cfg.vault, mountPoint: process.env.VAULT_MOUNT_POINT };
+  }
+  if (process.env.VAULT_DEVICE_PATH) {
+    cfg.vault = { ...cfg.vault, devicePath: process.env.VAULT_DEVICE_PATH };
+  }
+
   // USB overrides
   if (process.env.USB_POLL_INTERVAL_MS) {
     cfg.usb = { ...cfg.usb, pollIntervalMs: parseInt(process.env.USB_POLL_INTERVAL_MS, 10) };

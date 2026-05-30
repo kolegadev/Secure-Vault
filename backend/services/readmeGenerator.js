@@ -1,6 +1,7 @@
 import { getDatabase } from '../db/connection.js';
 import { logger } from '../utils/logger.js';
 import { writeFile } from './fileManager.js';
+import { getVaultSubdir, resolveVaultPath } from './vaultPaths.js';
 import path from 'path';
 import { config } from '../config/index.js';
 
@@ -125,14 +126,14 @@ ${service.swagger_url ? `[Swagger UI](${service.swagger_url})` : '_No Swagger UR
     // Sanitize the service name to prevent path traversal
     const safeServiceName = sanitizeServiceName(service.name);
     const filePath = path.join(config.paths.servicesDir, `${safeServiceName}.md`);
-    
-    // Verify the resolved path is within the intended directory
-    const resolvedPath = path.resolve(filePath);
-    const expectedDir = path.resolve(config.paths.servicesDir);
-    if (!resolvedPath.startsWith(expectedDir + path.sep)) {
+
+    // Verify the resolved path is within the vault services/config directory
+    const resolvedPath = resolveVaultPath(filePath);
+    const expectedDir = path.resolve(getVaultSubdir('servicesDir'));
+    if (!resolvedPath.startsWith(expectedDir + path.sep) && resolvedPath !== expectedDir) {
       throw new Error('Invalid file path: potential directory traversal detected');
     }
-    
+
     writeFile(filePath, content);
     logger.info({ serviceId, path: filePath }, 'README generated');
     return { success: true, message: 'README generated successfully', content };

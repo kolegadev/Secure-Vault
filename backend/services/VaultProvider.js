@@ -3,6 +3,7 @@ import path from 'path';
 import { VaultError, ValidationError } from './errors.js';
 import { getDatabase } from '../db/connection.js';
 import { logger } from '../utils/logger.js';
+import { getPlatformDefaults } from '../config/platforms.js';
 
 /**
  * Abstract base class defining the VaultProvider interface.
@@ -80,7 +81,11 @@ export class VaultProvider {
   }
 
   _getDefaultMountPoint() {
-    return this.config.luks?.mountPoint || '/mnt/openclaw-vault';
+    return (
+      this.config.vault?.mountPoint ||
+      this.config.luks?.mountPoint ||
+      getPlatformDefaults().defaultMountPoint
+    );
   }
 
   /**

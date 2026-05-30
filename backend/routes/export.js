@@ -6,6 +6,7 @@ import archiver from 'archiver';
 import path from 'path';
 import fs from 'fs';
 import { config } from '../config/index.js';
+import { getMountPoint, resolveVaultPath } from '../services/vaultPaths.js';
 
 const router = Router();
 
@@ -53,9 +54,18 @@ router.post('/skills', requireAuth, requireVaultMounted, (req, res, next) => {
     archive.pipe(res);
 
     for (const row of rows) {
-      if (fs.existsSync(row.path)) {
-        const dirName = path.basename(path.dirname(row.path));
-        archive.file(row.path, { name: `${dirName}/SKILL.md` });
+      // Resolve stored path relative to current mount point for cross-platform support
+      let skillPath;
+      try {
+        skillPath = resolveVaultPath(row.path);
+      } catch {
+        // If resolve fails (e.g. absolute path from different mount point), try direct fs check
+        skillPath = row.path;
+      }
+
+      if (fs.existsSync(skillPath)) {
+        const dirName = path.basename(path.dirname(skillPath));
+        archive.file(skillPath, { name: `${dirName}/SKILL.md` });
       }
     }
 
@@ -68,7 +78,7 @@ router.post('/skills', requireAuth, requireVaultMounted, (req, res, next) => {
 
 router.post('/full', requireAuth, requireVaultMounted, (req, res, next) => {
   try {
-    const mountPoint = config.luks.mountPoint;
+    const mountPoint = getMountPoint();
     const archive = archiver('zip', { zlib: { level: 9 } });
 
     res.setHeader('Content-Type', 'application/zip');

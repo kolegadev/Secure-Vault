@@ -78,12 +78,13 @@
 │   ├── services/
 │   │   ├── VaultProvider.js        # Abstract base class (provider contract)
 │   │   ├── VaultProviderFactory.js # Singleton factory (luks | veracrypt)
+│   │   ├── vaultPaths.js           # Cross-platform mount-point + path resolver
 │   │   ├── errors.js               # VaultError, MountError, ValidationError
 │   │   ├── luksManager.js          # @deprecated — legacy cryptsetup wrapper
 │   │   ├── providers/
 │   │   │   ├── LuksProvider.js     # LUKS adapter (implements VaultProvider)
 │   │   │   └── VeraCryptProvider.js # VeraCrypt CLI adapter (cross-platform)
-│   │   ├── usbMonitor.js           # udevadm monitor + fallback polling
+│   │   ├── usbMonitor.js           # udevadm monitor (Linux); provider polling (macOS/Windows)
 │   │   ├── fileManager.js          # Safe vault file ops with path traversal guards
 │   │   ├── skillScanner.js         # SKILL.md discovery, YAML parsing, OpenClaw install
 │   │   └── readmeGenerator.js      # Auto-generated service README templates
@@ -155,6 +156,8 @@
 
 **Migration mapping:** `env/` → `secrets/`, `services/` → `config/`. The remaining directories (`skills`, `exports`) are preserved in place. `crypto/` and `audit/` are created empty if they do not exist.
 
+**Config mapping:** `paths.envDir` → `secrets`, `paths.servicesDir` → `config`. New V2 keys: `paths.cryptoDir`, `paths.auditDir`. Environment variables `VAULT_MOUNT_POINT` and `VAULT_DEVICE_PATH` override `vault.mountPoint` and `vault.devicePath`.
+
 ## Testing Strategy
 | Layer | Method | Coverage |
 |-------|--------|----------|
@@ -179,3 +182,4 @@
 - WebSocket falls back to polling `/dev/disk/by-id` if udevadm is unavailable
 - Database uses WAL mode for concurrent access safety
 - All file operations validated against mount point prefix only
+- `vaultPaths.js` is the single source of truth for mount-point resolution; never use `config.luks.mountPoint` directly in new code

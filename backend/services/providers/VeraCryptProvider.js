@@ -33,11 +33,11 @@ export class VeraCryptProvider extends VaultProvider {
   /* ------------------------------------------------------------------ */
 
   _devicePath() {
-    return this.config.luks?.devicePath;
+    return this.config.vault?.devicePath || this.config.luks?.devicePath || null;
   }
 
   _mountPoint(mountPoint) {
-    return mountPoint || this.config.luks?.mountPoint || this.defaultMountPoint;
+    return mountPoint || this.config.vault?.mountPoint || this.config.luks?.mountPoint || this.defaultMountPoint;
   }
 
   /**

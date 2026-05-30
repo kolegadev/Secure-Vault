@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { spawn } from 'child_process';
 import { requireAuth, requireVaultMounted } from '../middleware/auth.js';
 import { syncSkillsToDatabase } from '../services/skillScanner.js';
+import { getMountPoint } from '../services/vaultPaths.js';
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
 
@@ -54,7 +55,7 @@ router.post('/install', requireAuth, requireVaultMounted, async (req, res, next)
 
     const args = [
       'install',
-      '--workdir', config.luks.mountPoint,
+      '--workdir', getMountPoint(),
       '--dir', config.paths.skillsDir,
       '--no-input',
       slug,
