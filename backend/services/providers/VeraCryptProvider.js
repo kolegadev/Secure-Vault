@@ -23,6 +23,8 @@ export class VeraCryptProvider extends VaultProvider {
     const defaults = getPlatformDefaults();
     this.veracryptBin = config.veracrypt?.binaryPath || defaults.veracryptBin;
     this.defaultMountPoint = config.veracrypt?.mountPoint || defaults.defaultMountPoint;
+    this.mountWrapper = config.veracrypt?.mountWrapper || defaults.mountWrapper;
+    this.unmountWrapper = config.veracrypt?.unmountWrapper || defaults.unmountWrapper;
     this.mountTimeoutMs = config.vault?.mountTimeoutMs || 30000;
   }
 
@@ -39,12 +41,34 @@ export class VeraCryptProvider extends VaultProvider {
   }
 
   /**
-   * Spawn VeraCrypt CLI with the given args.
-   * Does NOT log args that could contain sensitive data (defense in depth).
+   * Check if secure sudo wrappers are installed and available.
+   * Used on Linux to avoid granting blanket sudo access to veracrypt.
+   * @returns {boolean}
    */
-  _spawnVc(args, input) {
+  _hasSecureWrappers() {
+    if (this.platform !== 'linux') return false;
+    try {
+      return !!(
+        this.mountWrapper &&
+        fs.existsSync(this.mountWrapper) &&
+        this.unmountWrapper &&
+        fs.existsSync(this.unmountWrapper)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Spawn VeraCrypt CLI (or a wrapper) with the given args.
+   * Does NOT log args that could contain sensitive data (defense in depth).
+   * @param {string[]} args
+   * @param {string|null} input
+   * @param {string} [command] — override command (defaults to veracrypt binary)
+   */
+  _spawnVc(args, input, command = this.veracryptBin) {
     return new Promise((resolve, reject) => {
-      const child = spawn(this.veracryptBin, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+      const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'] });
       let stdout = '';
       let stderr = '';
 
@@ -68,15 +92,18 @@ export class VeraCryptProvider extends VaultProvider {
 
   /**
    * Execute a VeraCrypt command with timeout support.
+   * @param {string[]} args
+   * @param {string|null} input
+   * @param {string} [command]
    */
-  async _execVc(args, input) {
+  async _execVc(args, input, command) {
     const timeoutPromise = new Promise((_, reject) => {
       setTimeout(() => {
         reject(new MountError('VeraCrypt operation timed out', 'MOUNT_TIMEOUT'));
       }, this.mountTimeoutMs);
     });
 
-    const execPromise = this._spawnVc(args, input);
+    const execPromise = this._spawnVc(args, input, command);
     return Promise.race([execPromise, timeoutPromise]);
   }
 
@@ -236,9 +263,13 @@ export class VeraCryptProvider extends VaultProvider {
     }
 
     try {
-      // Headless mount via stdin password
-      const args = ['--text', '--mount', dp, mp, '--stdin'];
-      const result = await this._execVc(args, password + '\n');
+      // Use secure sudo wrappers on Linux when available; otherwise fall back to direct binary
+      const useWrapper = this._hasSecureWrappers();
+      const command = useWrapper ? 'sudo' : this.veracryptBin;
+      const args = useWrapper
+        ? [this.mountWrapper, dp, mp]
+        : ['--text', '--mount', dp, mp, '--stdin'];
+      const result = await this._execVc(args, password + '\n', command);
 
       // Security: clear password from local variable immediately
       // eslint-disable-next-line no-param-reassign
@@ -275,8 +306,12 @@ export class VeraCryptProvider extends VaultProvider {
     }
 
     try {
-      const args = ['--text', '--dismount', mp];
-      const result = await this._execVc(args, null);
+      const useWrapper = this._hasSecureWrappers();
+      const command = useWrapper ? 'sudo' : this.veracryptBin;
+      const args = useWrapper
+        ? [this.unmountWrapper, mp]
+        : ['--text', '--dismount', mp];
+      const result = await this._execVc(args, null, command);
 
       if (result.code !== 0) {
         // Check for busy-device hint

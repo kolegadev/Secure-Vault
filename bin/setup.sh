@@ -54,22 +54,39 @@ if ! id "$VAULT_USER" &>/dev/null; then
   useradd --system --no-create-home --shell /bin/false "$VAULT_USER"
 fi
 
-# 4. Configure sudoers for cryptsetup/mount/umount
+# 4. Configure sudoers for cryptsetup/mount/umount (LUKS) + VeraCrypt wrappers
 log "Configuring sudoers..."
 SUDOERS_FILE="/etc/sudoers.d/99-openclaw-vault"
 cat > "$SUDOERS_FILE" <<EOF
 # OpenClaw Secure Vault — restricted sudo privileges
+# LUKS legacy paths
 $VAULT_USER ALL=(root) NOPASSWD: /sbin/cryptsetup
 $VAULT_USER ALL=(root) NOPASSWD: /bin/mount
 $VAULT_USER ALL=(root) NOPASSWD: /bin/umount
 $VAULT_USER ALL=(root) NOPASSWD: /usr/bin/mount
 $VAULT_USER ALL=(root) NOPASSWD: /usr/bin/umount
+# VeraCrypt secure wrappers (validate args before calling veracrypt)
+$VAULT_USER ALL=(root) NOPASSWD: /usr/local/bin/securevault-veracrypt-mount
+$VAULT_USER ALL=(root) NOPASSWD: /usr/local/bin/securevault-veracrypt-unmount
 EOF
 chmod 440 "$SUDOERS_FILE"
 visudo -c || error "sudoers syntax error"
 
-# 5. Create mount point
+# 5. Create mount points
 mkdir -p "$MOUNT_POINT"
+mkdir -p /mnt/securevault
+
+# 5b. Install VeraCrypt wrapper scripts
+log "Installing VeraCrypt wrapper scripts..."
+install -m 755 -o root -g root "$SCRIPT_DIR/securevault-veracrypt-mount" /usr/local/bin/
+install -m 755 -o root -g root "$SCRIPT_DIR/securevault-veracrypt-unmount" /usr/local/bin/
+
+# 5c. Warn if VeraCrypt is not installed
+if ! command -v veracrypt &> /dev/null; then
+  log "WARNING: veracrypt is not installed."
+  log "  Install VeraCrypt from https://www.veracrypt.fr/en/Downloads.html"
+  log "  (or via apt if available) before using the veracrypt provider."
+fi
 
 # 6. Install application
 log "Installing application to $APP_DIR..."

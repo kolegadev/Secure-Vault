@@ -1,0 +1,74 @@
+#!/bin/bash
+# OpenClaw Secure Vault — VeraCrypt mount wrapper (sudoers-safe)
+# Called by the openclaw-vault service via sudo NOPASSWD.
+#
+# Security features:
+# - Strict argument validation (device + mount point whitelists)
+# - Symlink resolution to prevent path escapes
+# - Minimal environment (PATH, LC_ALL, umask)
+# - exec replaces this shell so the password never lingers in bash memory
+set -euo pipefail
+
+# === SECURITY HARDENING ===
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+export LC_ALL=C
+umask 077
+
+# === ARGUMENT VALIDATION ===
+if [[ $# -ne 2 ]]; then
+    echo "Usage: securevault-veracrypt-mount <device> <mountpoint>" >&2
+    exit 1
+fi
+
+DEVICE="$1"
+MOUNTPOINT="$2"
+
+# Validate device path — strict whitelist
+if [[ ! "$DEVICE" =~ ^/dev/(sd[a-z][0-9]*|nvme[0-9]+n[0-9]+(p[0-9]+)?|loop[0-9]+|disk/by-(id|uuid|label|path)/[a-zA-Z0-9_:.+-]+)$ ]]; then
+    echo "Error: Invalid device path: $DEVICE" >&2
+    exit 1
+fi
+
+# Validate mount point — strict whitelist
+if [[ ! "$MOUNTPOINT" =~ ^/mnt/[a-zA-Z0-9_:-]+$ ]] \&\& [[ ! "$MOUNTPOINT" =~ ^/media/[a-zA-Z0-9_-]+/[a-zA-Z0-9_:-]+$ ]]; then
+    echo "Error: Invalid mount point: $MOUNTPOINT" >&2
+    exit 1
+fi
+
+# Resolve symlinks and verify device stays inside /dev
+REAL_DEVICE=$(readlink -f "$DEVICE" 2>/dev/null) || REAL_DEVICE="$DEVICE"
+if [[ ! "$REAL_DEVICE" =~ ^/dev/ ]]; then
+    echo "Error: Device symlink resolves outside /dev/: $REAL_DEVICE" >&2
+    exit 1
+fi
+
+# Verify device exists and is a block device
+if [[ ! -b "$REAL_DEVICE" ]]; then
+    echo "Error: Not a block device: $REAL_DEVICE" >&2
+    exit 1
+fi
+
+# Create mount point if needed (safe because path was validated above)
+if [[ ! -d "$MOUNTPOINT" ]]; then
+    mkdir -p "$MOUNTPOINT"
+fi
+
+# === FIND VERACRYPT BINARY ===
+VERACRYPT=""
+for candidate in /usr/bin/veracrypt /usr/local/bin/veracrypt; do
+    if [[ -x "$candidate" ]]; then
+        VERACRYPT="$candidate"
+        break
+    fi
+done
+
+if [[ -z "$VERACRYPT" ]]; then
+    echo "Error: veracrypt binary not found" >&2
+    exit 1
+fi
+
+# === MOUNT ===
+# exec replaces this shell process so the password never remains in bash memory.
+# Password is read from stdin via --stdin.
+exec "$VERACRYPT" --text --non-interactive --stdin \
+    --mount "$REAL_DEVICE" "$MOUNTPOINT"

@@ -11,7 +11,7 @@
 | Module | Responsibility | Key Endpoints |
 |--------|---------------|---------------|
 | Auth | Session-based login, timeout, CSRF | POST /api/auth/login, logout |
-| Vault Controller | Volume create/unlock/lock/status | POST /api/luks/* (→ /api/vault/* in Epic B) |
+| Vault Controller | Volume create/unlock/lock/status | POST /api/vault/* (/api/luks/* deprecated) |
 | USB Monitor | Detect insertion/removal | WebSocket /ws/usb-status |
 | Env Var API | CRUD for environment variables | GET/POST/PUT/DELETE /api/env |
 | File Manager | Read/write .env, SKILL.md, README | GET/POST /api/files/* |

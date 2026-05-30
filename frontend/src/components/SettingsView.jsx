@@ -24,7 +24,7 @@ export default function SettingsView() {
   const handleLock = async () => {
     if (!confirm('Lock the vault? All sessions will be invalidated.')) return
     try {
-      await request('/luks/lock', { method: 'POST' })
+      await request('/vault/lock', { method: 'POST' })
       window.location.reload()
     } catch (err) {
       setError(err.message)
@@ -41,7 +41,7 @@ export default function SettingsView() {
     }
     setLoading(true)
     try {
-      const result = await request('/luks/keyslot', {
+      const result = await request('/vault/keyslot', {
         method: 'POST',
         body: JSON.stringify({ action: 'add', oldPass: passphrase, newPass: newPassphrase }),
       })
@@ -67,7 +67,7 @@ export default function SettingsView() {
     if (!confirm('Remove this key slot? Make sure you have another working passphrase.')) return
     setLoading(true)
     try {
-      const result = await request('/luks/keyslot', {
+      const result = await request('/vault/keyslot', {
         method: 'POST',
         body: JSON.stringify({ action: 'remove', oldPass: passphrase, slotIndex: parseInt(slotIndex, 10) }),
       })
@@ -87,9 +87,9 @@ export default function SettingsView() {
 
   const handleBackup = async () => {
     try {
-      const result = await request('/luks/backup-header', {
+      const result = await request('/vault/backup-header', {
         method: 'POST',
-        body: JSON.stringify({ outputPath: `/tmp/luks-header-backup-${Date.now()}.bin` }),
+        body: JSON.stringify({ outputPath: `/tmp/vault-header-backup-${Date.now()}.bin` }),
       })
       if (result.success) {
         setSuccess('Header backed up to /tmp')
@@ -126,8 +126,8 @@ export default function SettingsView() {
       </div>
 
       <div className="vault-card p-5 space-y-4">
-        <h2 className="text-sm font-semibold text-vault-text flex items-center gap-2"><Download className="w-4 h-4 text-vault-primary" /> Backup LUKS Header</h2>
-        <p className="text-xs text-vault-textSecondary">Create a backup of the LUKS header. Store this securely — without it, data recovery is impossible if the header is corrupted.</p>
+        <h2 className="text-sm font-semibold text-vault-text flex items-center gap-2"><Download className="w-4 h-4 text-vault-primary" /> Backup Vault Header</h2>
+        <p className="text-xs text-vault-textSecondary">Create a backup of the vault header. Store this securely — without it, data recovery is impossible if the header is corrupted.</p>
         <button onClick={handleBackup} className="vault-btn-primary"><Download className="w-4 h-4" /> Backup Header</button>
       </div>
 

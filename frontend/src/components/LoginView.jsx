@@ -50,7 +50,7 @@ export default function LoginView({ onLogin }) {
             <Shield className="w-8 h-8 text-vault-primary" />
           </div>
           <h1 className="text-2xl font-bold text-vault-text mb-1">OpenClaw Secure Vault</h1>
-          <p className="text-sm text-vault-textSecondary">LUKS-encrypted USB management</p>
+          <p className="text-sm text-vault-textSecondary">Encrypted USB vault management</p>
         </div>
 
         <div className="vault-card p-6 space-y-6">
@@ -69,7 +69,7 @@ export default function LoginView({ onLogin }) {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-vault-textSecondary mb-1.5">LUKS Passphrase</label>
+              <label className="block text-sm font-medium text-vault-textSecondary mb-1.5">Vault Passphrase</label>
               <div className="relative">
                 <input
                   type={showPassphrase ? 'text' : 'password'}

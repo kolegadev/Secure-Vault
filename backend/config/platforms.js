@@ -7,6 +7,8 @@ export const PLATFORM_DEFAULTS = {
   linux: {
     veracryptBin: '/usr/bin/veracrypt',
     defaultMountPoint: '/mnt/securevault',
+    mountWrapper: '/usr/local/bin/securevault-veracrypt-mount',
+    unmountWrapper: '/usr/local/bin/securevault-veracrypt-unmount',
   },
   darwin: {
     veracryptBin: '/Applications/VeraCrypt.app/Contents/MacOS/VeraCrypt',

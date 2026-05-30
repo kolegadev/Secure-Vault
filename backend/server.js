@@ -46,7 +46,8 @@ function validateWebSocketAuth(req) {
 
   return { valid: !!session, sessionId };
 }
-import luksRoutes from './routes/luks.js';
+import vaultRoutes from './routes/vault.js';
+import luksRoutes from './routes/luks.js'; // deprecated backward-compat alias
 import envRoutes from './routes/env.js';
 import skillsRoutes from './routes/skills.js';
 import servicesRoutes from './routes/services.js';
@@ -215,7 +216,8 @@ app.use((req, _res, next) => {
 
 // API routes
 app.use('/api/auth', authRoutes);
-app.use('/api/luks', luksRoutes);
+app.use('/api/vault', vaultRoutes);
+app.use('/api/luks', luksRoutes); // deprecated backward-compat alias
 app.use('/api/env', envRoutes);
 app.use('/api/skills', skillsRoutes);
 app.use('/api/services', servicesRoutes);

@@ -1,0 +1,43 @@
+#!/bin/bash
+# OpenClaw Secure Vault — VeraCrypt unmount wrapper (sudoers-safe)
+# Called by the openclaw-vault service via sudo NOPASSWD.
+#
+# Security features:
+# - Strict mount-point whitelist
+# - Minimal environment (PATH, LC_ALL)
+# - exec replaces this shell so no sensitive data lingers in bash memory
+set -euo pipefail
+
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+export LC_ALL=C
+
+# === ARGUMENT VALIDATION ===
+if [[ $# -ne 1 ]]; then
+    echo "Usage: securevault-veracrypt-unmount <mountpoint>" >&2
+    exit 1
+fi
+
+MOUNTPOINT="$1"
+
+# Validate mount point — strict whitelist
+if [[ ! "$MOUNTPOINT" =~ ^/mnt/[a-zA-Z0-9_:-]+$ ]] \&\& [[ ! "$MOUNTPOINT" =~ ^/media/[a-zA-Z0-9_-]+/[a-zA-Z0-9_:-]+$ ]]; then
+    echo "Error: Invalid mount point: $MOUNTPOINT" >&2
+    exit 1
+fi
+
+# === FIND VERACRYPT BINARY ===
+VERACRYPT=""
+for candidate in /usr/bin/veracrypt /usr/local/bin/veracrypt; do
+    if [[ -x "$candidate" ]]; then
+        VERACRYPT="$candidate"
+        break
+    fi
+done
+
+if [[ -z "$VERACRYPT" ]]; then
+    echo "Error: veracrypt binary not found" >&2
+    exit 1
+fi
+
+# === DISMOUNT ===
+exec "$VERACRYPT" --text --non-interactive --dismount "$MOUNTPOINT"

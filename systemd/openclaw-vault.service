@@ -18,7 +18,7 @@ Environment=HOST=0.0.0.0
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/openclaw-vault/backend/data /mnt/openclaw-vault /tmp
+ReadWritePaths=/opt/openclaw-vault/backend/data /mnt/openclaw-vault /mnt/securevault /tmp
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true

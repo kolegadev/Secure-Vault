@@ -61,10 +61,11 @@
 │   ├── config/
 │   │   ├── default.json       # Default configuration
 │   │   ├── index.js           # Config loader with env overrides
-│   │   └── platforms.js       # Platform-specific defaults (VeraCrypt paths, mount points)
+│   │   └── platforms.js       # Platform-specific defaults (VeraCrypt paths, mount points, wrappers)
 │   ├── routes/
 │   │   ├── auth.js            # /api/auth/* (login, logout, status)
-│   │   ├── luks.js            # /api/luks/* (create, unlock, lock, keyslot)
+│   │   ├── vault.js           # /api/vault/* (create, unlock, lock, keyslot, backup-header)
+│   │   ├── luks.js            # @deprecated — re-exports vault.js for backward compat
 │   │   ├── env.js             # /api/env/* (CRUD, bulk-delete, export)
 │   │   ├── skills.js          # /api/skills/* (scan, install, uninstall)
 │   │   ├── services.js        # /api/services/* (CRUD, readme generate)
@@ -112,7 +113,9 @@
 ├── bin/
 │   ├── setup.sh               # Full system setup (root required)
 │   ├── usb-inserted.sh        # udev trigger script
-│   └── backup.sh              # LUKS header + full disk backup
+│   ├── backup.sh              # LUKS header + full disk backup
+│   ├── securevault-veracrypt-mount   # Sudoers-safe VeraCrypt mount wrapper
+│   └── securevault-veracrypt-unmount # Sudoers-safe VeraCrypt unmount wrapper
 ├── systemd/
 │   └── openclaw-vault.service # Hardened systemd unit
 ├── package.json               # Root workspace orchestration

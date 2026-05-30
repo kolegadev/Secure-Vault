@@ -2,7 +2,7 @@
   "name": "openclaw-secure-vault",
   "version": "1.0.0",
   "private": true,
-  "description": "Secure vault for LUKS-encrypted USB management, env vars, skills, and services",
+  "description": "Secure vault for encrypted USB management, env vars, skills, and services",
   "scripts": {
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "cd backend && npm run dev",

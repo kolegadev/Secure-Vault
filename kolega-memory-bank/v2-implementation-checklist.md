@@ -99,25 +99,25 @@ This checklist tracks the conversion of Secure Vault from a Linux-only LUKS-back
 **Goal**: The SecureVault UI mounts/unmounts VeraCrypt without opening the VeraCrypt GUI.
 
 ### B.1 Update Express Routes
-- [ ] Refactor `backend/routes/luks.js` → `backend/routes/vault.js`.
+- [x] Refactor `backend/routes/luks.js` → `backend/routes/vault.js`.
   - Rename endpoints from `/api/luks/*` to `/api/vault/*`.
   - Internally call `VaultProviderFactory.getProvider()`.
-- [ ] Add backward-compatibility aliases (`/api/luks/*` → `/api/vault/*`) or update the frontend calls.
-- [ ] Update `backend/server.js` to register the new vault route.
+- [x] Add backward-compatibility aliases (`/api/luks/*` → `/api/vault/*`) or update the frontend calls.
+- [x] Update `backend/server.js` to register the new vault route.
 
 ### B.2 Update Frontend API Calls
-- [ ] Audit `frontend/src/` for hardcoded `/api/luks/` paths.
-- [ ] Update to `/api/vault/` where needed.
-- [ ] Update status display strings: "VeraCrypt SecureVault" instead of "LUKS SecureVault".
+- [x] Audit `frontend/src/` for hardcoded `/api/luks/` paths.
+- [x] Update to `/api/vault/` where needed.
+- [x] Update status display strings: "VeraCrypt SecureVault" instead of "LUKS SecureVault".
 
 ### B.3 Linux Permission Handling
-- [ ] Create `bin/securevault-veracrypt-mount` wrapper script (sudoers-safe).
+- [x] Create `bin/securevault-veracrypt-mount` wrapper script (sudoers-safe).
   - Validates allowed device path regex.
   - Validates allowed mount path.
   - Rejects arbitrary shell arguments.
-- [ ] Create `bin/securevault-veracrypt-unmount` wrapper script.
-- [ ] Update `bin/setup.sh` to install these wrappers and configure sudoers for them.
-- [ ] Ensure the service user (`openclaw-vault`) can run only these wrappers as root.
+- [x] Create `bin/securevault-veracrypt-unmount` wrapper script.
+- [x] Update `bin/setup.sh` to install these wrappers and configure sudoers for them.
+- [x] Ensure the service user (`openclaw-vault`) can run only these wrappers as root.
 
 **Files**
 - `bin/securevault-veracrypt-mount` (new)
