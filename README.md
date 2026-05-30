@@ -84,6 +84,55 @@ cd backend && npm run db:migrate
 npm run build
 ```
 
+## Updating a Deployed Instance
+
+> **Do not update by re-running `bin/setup.sh`.** `setup.sh` copies the repo's
+> `node_modules` into `/opt/openclaw-vault`. If the source checkout was built with
+> a different Node.js major version than the service runs under (e.g. an
+> `nvm`-managed Node vs. the system Node 20 that `setup.sh` installs), the copied
+> native module (`better-sqlite3`) carries the wrong ABI and the service fails to
+> start (`NODE_MODULE_VERSION` mismatch). Always let `npm install` run **inside the
+> deployment**, under the service's Node version.
+
+`/opt/openclaw-vault` is a plain copy, not a git checkout. The safe update flow is:
+pull into your source clone → sync **code only** into `/opt` (preserving
+`backend/.env`, `backend/data/`, and `node_modules`) → install/build/migrate in
+place → restart.
+
+```bash
+# 0. Back up the DB first
+sudo install -d -o openclaw-vault -g openclaw-vault /opt/openclaw-vault/backend/data/backups
+sudo -u openclaw-vault sqlite3 /opt/openclaw-vault/backend/data/vault.db \
+  ".backup '/opt/openclaw-vault/backend/data/backups/vault-$(date +%F-%H%M%S).db'"
+
+# 1. Stop the service
+sudo systemctl stop openclaw-vault
+
+# 2. Pull latest into the SOURCE clone (not /opt)
+cd ~/secure-vault && git fetch origin main && git reset --hard origin/main
+
+# 3. Sync code into the deployment, preserving runtime state
+sudo rsync -a --delete \
+  --exclude='.git' --exclude='node_modules' \
+  --exclude='backend/.env' --exclude='backend/data' --exclude='frontend/dist' \
+  ~/secure-vault/ /opt/openclaw-vault/
+
+# 4. Install deps + build IN the deployment, under the service's Node
+cd /opt/openclaw-vault && sudo npm run install:all && sudo npm run build
+
+# 5. Apply new migrations, fix ownership
+sudo chown -R openclaw-vault:openclaw-vault /opt/openclaw-vault
+sudo -u openclaw-vault bash -c 'cd /opt/openclaw-vault/backend && npm run db:migrate'
+
+# 6. Restart and verify
+sudo systemctl restart openclaw-vault
+sudo systemctl status openclaw-vault
+```
+
+**Rollback:** check out a known-good commit in the source clone
+(`git reset --hard <sha>`), repeat steps 3–6, and if needed restore a DB backup
+from `backend/data/backups/`.
+
 ## Configuration
 
 Copy `backend/.env.example` to `backend/.env` and adjust values:
