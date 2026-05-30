@@ -200,7 +200,7 @@ This checklist tracks the conversion of Secure Vault from a Linux-only LUKS-back
 **Goal**: When the VeraCrypt USB is plugged into the Pi5, it serves approved secrets over Tailscale only.
 
 ### E.1 Project Scaffolding
-- [ ] Create `secret-server/` directory:
+- [x] Create `secret-server/` directory:
   ```
   secret-server/
   ├── pyproject.toml
@@ -233,22 +233,22 @@ This checklist tracks the conversion of Secure Vault from a Linux-only LUKS-back
   ```
 
 ### E.2 Core FastAPI Application
-- [ ] `main.py` creates the FastAPI app with:
+- [x] `main.py` creates the FastAPI app with:
   - CORS disabled (Tailscale is the network layer).
   - Structured logging (no secrets).
-- [ ] Dependencies:
+- [x] Dependencies:
   - `fastapi`, `uvicorn[standard]`, `pydantic>=2`, `python-multipart`
 
 ### E.3 Tailscale-Only Binding
-- [ ] Implement `get_tailscale_ip()` in `config.py`.
+- [x] Implement `get_tailscale_ip()` in `config.py`.
   - Scan interfaces for `100.x.x.x`.
   - Refuse to start if none found.
-- [ ] Start Uvicorn with `--host <tailscale_ip> --port 8000` (or 8787).
-- [ ] Log all incoming connection source IPs.
+- [x] Start Uvicorn with `--host <tailscale_ip> --port 8000` (or 8787).
+- [x] Log all incoming connection source IPs.
 
 ### E.4 Vault Guard
-- [ ] `vault/guard.py` provides `require_vault_mounted()` dependency.
-- [ ] Any endpoint that reads secrets returns `503` if the vault is not mounted.
+- [x] `vault/guard.py` provides `require_vault_mounted()` dependency.
+- [x] Any endpoint that reads secrets returns `503` if the vault is not mounted.
 
 ### E.5 API Endpoints
 Implement the minimum API:
@@ -265,7 +265,7 @@ Implement the minimum API:
 | POST | `/admin/reload` | Reload vault manifest & profiles | API key + admin |
 
 ### E.6 Client Authentication & Profiles
-- [ ] Create `auth/profiles.json` (or YAML) inside the vault:
+- [x] Create `auth/profiles.json` (or YAML) inside the vault:
   ```json
   {
     "clients": {
@@ -275,36 +275,36 @@ Implement the minimum API:
     }
   }
   ```
-- [ ] API key validation middleware (`X-API-Key` header).
-- [ ] Each client identity maps to allowed profiles.
-- [ ] Each profile maps to allowed secrets and skills.
-- [ ] Deny by default.
+- [x] API key validation middleware (`X-API-Key` header).
+- [x] Each client identity maps to allowed profiles.
+- [x] Each profile maps to allowed secrets and skills.
+- [x] Deny by default.
 
 ### E.7 Tiered Secret Delivery
-- [ ] **Tier 3 (SKILL.md)** — read from disk, short TTL cache allowed, version hash recommended.
-- [ ] **Tier 2 (runtime-env)** — fetch once at boot, client stores in RAM only, no disk persistence.
-- [ ] **Tier 1 (signing)** — never expose private key; request payload hash → return signature.
+- [x] **Tier 3 (SKILL.md)** — read from disk, short TTL cache allowed, version hash recommended.
+- [x] **Tier 2 (runtime-env)** — fetch once at boot, client stores in RAM only, no disk persistence.
+- [x] **Tier 1 (signing)** — never expose private key; request payload hash → return signature.
 
 ### E.8 VeraCrypt Integration (Python)
-- [ ] `vault/veracrypt.py` wraps VeraCrypt CLI for Python.
-- [ ] Use `subprocess.Popen` with `stdin=PIPE` for password input.
-- [ ] Same security rules: no `-p` on CLI, no logging.
+- [x] `vault/veracrypt.py` wraps VeraCrypt CLI for Python.
+- [x] Use `subprocess.Popen` with `stdin=PIPE` for password input.
+- [x] Same security rules: no `-p` on CLI, no logging.
 
 ### E.9 systemd Deployment
-- [ ] `secret-server.service` unit:
+- [x] `secret-server.service` unit:
   - Runs as dedicated `secretserver` user.
   - After `tailscaled.service`.
   - After `openclaw-vault.service` (or a mount target).
   - Binds to Tailscale IP only.
   - Hardening: `NoNewPrivileges=true`, `ProtectSystem=strict`, `ProtectHome=true`, `PrivateTmp=true`.
-- [ ] `deploy/install.sh` to install the service on Pi5.
+- [x] `deploy/install.sh` to install the service on Pi5.
 
 **Acceptance Criteria**
-- Server refuses to start if Tailscale is not connected.
-- Server returns 503 for all secret endpoints if vault is unmounted.
-- Remote Tailscale client can fetch approved SKILL.md files.
-- Unapproved client is denied with 401/403.
-- Private keys are never present in any API response.
+- [x] Server refuses to start if Tailscale is not connected.
+- [x] Server returns 503 for all secret endpoints if vault is unmounted.
+- [x] Remote Tailscale client can fetch approved SKILL.md files.
+- [x] Unapproved client is denied with 401/403.
+- [x] Private keys are never present in any API response.
 
 ---
 

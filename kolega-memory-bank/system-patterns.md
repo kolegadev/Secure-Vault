@@ -30,6 +30,36 @@
 - **readmeGenerator.js**: README.md template engine
 - **skillScanner.js**: SKILL.md discovery & YAML frontmatter parser
 
+## Secret Server (Pi5 / Tailscale)
+When the VeraCrypt USB is plugged into a Raspberry Pi 5, a dedicated FastAPI service serves approved secrets and signing operations to authorized Tailscale peers only.
+
+### Architecture
+- **Tailscale-only binding** — `get_tailscale_ip()` scans interfaces for `100.x.x.x`; the server refuses to start if none is found.
+- **Vault guard** — `vault/guard.py` provides `require_vault_mounted()` dependency; all secret endpoints return `503` if the vault is unmounted.
+- **Profile-based ACLs** — `auth/client_auth.py` validates `X-API-Key` headers against `config/auth/profiles.json` inside the vault.
+- **Tiered secret delivery**:
+  - **Tier 3 (SKILL.md)** — read from disk, returned as plain text.
+  - **Tier 2 (runtime-env)** — `.env` files parsed and returned as JSON; client stores in RAM only.
+  - **Tier 1 (signing)** — private keys never leave the Pi; client sends `payload_hash`, server returns `signature`.
+
+### Modules
+| Module | Responsibility | Key Endpoints |
+|--------|---------------|---------------|
+| Health | Status, vault mount state, Tailscale IP | GET /health |
+| Vault API | Mount status and manifest | GET /vault/status |
+| Skills API | List and read SKILL.md files | GET /skills, /skills/{tool}/{file} |
+| Secrets API | Profile listing and runtime env | GET /profiles, POST /secrets/runtime-env |
+| Signing API | Hash-in, signature-out | POST /sign/polymarket, POST /sign/{key_id} |
+| Admin API | Reload vault profiles/config | POST /admin/reload |
+
+### Security Patterns (Secret Server)
+- No CORS — Tailscale is the network layer.
+- Structured logging via `structlog` — passwords and secrets are never logged.
+- VeraCrypt password passed via `stdin` only (`subprocess.Popen` with `stdin=PIPE`); never via CLI args.
+- Private keys loaded from `<mount>/crypto/` and cleared from memory after signing.
+- Every signing request is audited to `<mount>/audit/signing.log`.
+- systemd hardening: `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome=true`, `PrivateTmp=true`.
+
 ## VaultProvider Pattern
 - Routes and middleware consume `VaultProviderFactory.getProvider()` — never import `luksManager.js` directly.
 - `mountVault(devicePath, mountPoint, password)` unlocks + mounts via stdin password passing.

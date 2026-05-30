@@ -1,0 +1,8 @@
+# Production dependencies for Secret Server
+fastapi>=0.111
+uvicorn[standard]>=0.30
+pydantic>=2.7
+pydantic-settings>=2.2
+python-multipart>=0.0.9
+pyyaml>=6.0
+structlog>=24.1

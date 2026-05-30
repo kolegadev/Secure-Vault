@@ -6,6 +6,8 @@
 | OS | Raspberry Pi OS (Bookworm, 64-bit) | Latest |
 | Runtime | Node.js | 20.x LTS |
 | Backend Framework | Express.js | 4.x |
+| Secret Server Framework | FastAPI | 0.111+ |
+| Secret Server Runtime | Python | 3.11+ |
 | Database | SQLite3 (via better-sqlite3) | 11.3.x |
 | Frontend Framework | React | 18.x |
 | Build Tool | Vite | 5.x |
@@ -30,6 +32,14 @@
 - `archiver` — ZIP export generation
 - `cors`, `compression`, `cookie-parser` — Middleware
 
+### Secret Server (Python)
+- `fastapi` — REST API framework (async)
+- `uvicorn[standard]` — ASGI server
+- `pydantic` / `pydantic-settings` — Configuration validation
+- `structlog` — Structured logging with JSON output
+- `pyyaml` — YAML parsing (for profile configs)
+- `python-multipart` — Form/multipart parsing
+
 ### Frontend
 - `react`, `react-dom` — UI framework
 - `react-router-dom` — Client-side routing
@@ -47,6 +57,20 @@
 - `npm test` — Run backend tests
 - `npm run db:migrate` — Run SQLite schema migrations
 - `npm run db:seed` — Seed default data
+
+### Secret Server
+```bash
+cd secret-server
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+# Development (local loopback, Tailscale check disabled)
+SECRET_SERVER_TAILSCALE_ONLY=false uvicorn secret_server.main:app --host 127.0.0.1 --port 8000
+# Production (binds to Tailscale IP automatically)
+python -m secret_server.run
+# Tests
+pytest tests/
+```
 
 ## File Structure
 ```
@@ -111,6 +135,36 @@
 │   ├── vite.config.js         # Vite + proxy + React plugin
 │   ├── tailwind.config.js     # Custom vault color palette
 │   └── postcss.config.js      # Tailwind + autoprefixer
+├── secret-server/
+│   ├── src/secret_server/
+│   │   ├── __init__.py        # Package init
+│   │   ├── main.py            # FastAPI app factory + router registration
+│   │   ├── run.py             # Uvicorn entrypoint with Tailscale IP binding
+│   │   ├── config.py          # Pydantic settings + get_tailscale_ip()
+│   │   ├── api/
+│   │   │   ├── health.py      # GET /health
+│   │   │   ├── vault.py       # GET /vault/status
+│   │   │   ├── skills.py      # GET /skills, /skills/{tool}/{file}
+│   │   │   ├── secrets.py     # GET /profiles, POST /secrets/runtime-env
+│   │   │   ├── signing.py     # POST /sign/polymarket, /sign/{key_id}
+│   │   │   └── admin.py       # POST /admin/reload
+│   │   ├── vault/
+│   │   │   ├── veracrypt.py   # VeraCrypt Python wrapper (stdin password)
+│   │   │   └── guard.py       # require_vault_mounted() dependency
+│   │   ├── auth/
+│   │   │   ├── client_auth.py # API key validation + profile ACLs
+│   │   │   └── profiles.py    # Pydantic models for client/profile config
+│   │   └── signing/
+│   │       ├── agent.py       # Signer (hash in, signature out)
+│   │       └── audit.py       # Signing request audit logger
+│   ├── deploy/
+│   │   ├── secret-server.service  # Hardened systemd unit
+│   │   └── install.sh             # Pi5 install script
+│   ├── tests/
+│   │   └── test_api.py        # FastAPI TestClient tests
+│   ├── pyproject.toml         # Python packaging
+│   ├── requirements.txt       # Production dependencies
+│   └── README.md              # Secret Server documentation
 ├── bin/
 │   ├── setup.sh                      # Full system setup (root required)
 │   ├── usb-inserted.sh               # udev trigger script
@@ -162,8 +216,9 @@
 | Layer | Method | Coverage |
 |-------|--------|----------|
 | LUKS operations | Shell scripts + cryptsetup | Volume lifecycle |
-| API endpoints | Jest + Supertest | All CRUD, error cases, auth |
+| Node API endpoints | Jest + Supertest | All CRUD, error cases, auth |
 | Frontend components | Vitest + React Testing Library | Form validation, state transitions |
+| Secret Server endpoints | pytest + FastAPI TestClient | Vault guard, auth, signing |
 | Integration | Playwright | Full user journeys |
 | Security | Manual penetration testing | Rate limits, CSRF, session hijacking |
 
@@ -175,6 +230,9 @@
 - Rate limiting + secure session cookies
 - Helmet.js + CSP + path traversal guards
 - Pino redaction for all secret fields
+- Secret Server passwords passed via `subprocess.Popen(stdin=PIPE)` only; never as CLI args
+- Secret Server private keys loaded from vault `crypto/` and cleared from memory after signing
+- Secret Server audit log: every signing request logged to `audit/signing.log`
 
 ## Dev Notes
 - Backend uses pure ESM (`"type": "module"`)
@@ -183,3 +241,5 @@
 - Database uses WAL mode for concurrent access safety
 - All file operations validated against mount point prefix only
 - `vaultPaths.js` is the single source of truth for mount-point resolution; never use `config.luks.mountPoint` directly in new code
+- Secret Server config uses `pydantic-settings` with env prefix `SECRET_SERVER_`
+- Secret Server `run.py` resolves Tailscale IP at startup and binds Uvicorn to it
