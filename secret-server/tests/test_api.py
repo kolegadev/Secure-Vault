@@ -7,6 +7,9 @@ from fastapi.testclient import TestClient
 from secret_server.config import Settings
 from secret_server.main import create_app
 
+# Valid 32-byte hex private key for tests
+VALID_KEY_HEX = "11" * 32
+
 
 @pytest.fixture
 def client(tmp_path):
@@ -16,8 +19,8 @@ def client(tmp_path):
 
     crypto_dir = vault / "crypto"
     crypto_dir.mkdir()
-    (crypto_dir / "polymarket.key").write_text("polymarket-secret-key")
-    (crypto_dir / "test.key").write_text("test-secret-key")
+    (crypto_dir / "polymarket.key").write_text(VALID_KEY_HEX)
+    (crypto_dir / "test.key").write_text(VALID_KEY_HEX)
 
     config_dir = vault / "config" / "auth"
     config_dir.mkdir(parents=True)
@@ -86,14 +89,14 @@ def test_health(client):
 
 
 def test_sign_generic_no_api_key(client):
-    response = client.post("/sign/test", json={"payload_hash": "abc123"})
+    response = client.post("/sign/test", json={"payload_hash": "aa" * 32})
     assert response.status_code == 422
 
 
 def test_sign_generic_forbidden(client):
     response = client.post(
         "/sign/test",
-        json={"payload_hash": "abc123"},
+        json={"payload_hash": "aa" * 32},
         headers={"X-API-Key": "no-sign-key"},
     )
     assert response.status_code == 403
@@ -111,34 +114,38 @@ def test_sign_generic_missing_payload_hash(client):
 def test_sign_generic_success(client):
     response = client.post(
         "/sign/test",
-        json={"payload_hash": "deadbeef", "purpose": "unit-test"},
+        json={"payload_hash": "aa" * 32, "purpose": "unit-test"},
         headers={"X-API-Key": "test-key-123"},
     )
     assert response.status_code == 200
     data = response.json()
     assert "signature" in data
     assert data["signer"] == "test"
-    assert len(data["signature"]) == 64
+    # ECDSA secp256k1 signature with recovery byte = 130 hex chars
+    assert len(data["signature"]) == 130
 
 
 def test_sign_polymarket_success(client):
     response = client.post(
         "/sign/polymarket",
-        json={"payload_hash": "cafebabe", "market": "ETH-USD", "purpose": "trade"},
+        json={"payload_hash": "bb" * 32, "market": "ETH-USD", "purpose": "trade"},
         headers={"X-API-Key": "test-key-123"},
     )
     assert response.status_code == 200
     data = response.json()
     assert "signature" in data
     assert data["signer"] == "polymarket"
+    assert len(data["signature"]) == 130
 
 
 def test_sign_generic_rate_limit(client):
     # Exhaust the limit
     for i in range(10):
+        # Use a different hash each time to avoid any caching (not that there is any)
+        hash_hex = f"{i:02x}" * 32
         response = client.post(
             "/sign/test",
-            json={"payload_hash": f"hash{i}"},
+            json={"payload_hash": hash_hex},
             headers={"X-API-Key": "test-key-123"},
         )
         assert response.status_code == 200
@@ -146,7 +153,7 @@ def test_sign_generic_rate_limit(client):
     # Next request should be rate limited
     response = client.post(
         "/sign/test",
-        json={"payload_hash": "hash11"},
+        json={"payload_hash": "cc" * 32},
         headers={"X-API-Key": "test-key-123"},
     )
     assert response.status_code == 429

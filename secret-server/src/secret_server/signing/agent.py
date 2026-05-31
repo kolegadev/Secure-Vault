@@ -31,12 +31,11 @@ def _munlock_buffer(buf: bytearray) -> bool:
 
 
 class Signer:
-    """Deterministic signing agent.
+    """Deterministic ECDSA (secp256k1) signing agent.
 
-    .. warning::
-       The current implementation uses HMAC-SHA256 as a deterministic placeholder.
-       Replace with proper ECDSA (secp256k1) or Ed25519 signing via the
-       ``cryptography`` library for production blockchain use.
+    Uses ``eth-account`` for proper Ethereum-compatible signing.
+    Private keys are held in locked memory pages and overwritten immediately
+    after use.
     """
 
     def __init__(self, vault_path: str, crypto_dir: str):
@@ -55,22 +54,34 @@ class Signer:
 
         key_bytes = bytearray(private_key.encode("utf-8"))
         _mlock_buffer(key_bytes)
-        payload_bytes = bytearray(payload_hash.encode("utf-8"))
+
         try:
-            sig = hmac.new(
-                key_bytes,
-                payload_bytes,
-                hashlib.sha256,
-            ).hexdigest()
+            # Import here so the module loads even if eth-account is missing
+            from eth_account import Account
+            from eth_utils import to_bytes
+
+            # Strip optional 0x prefix for eth-account
+            pk_hex = private_key
+            if pk_hex.startswith("0x") or pk_hex.startswith("0X"):
+                pk_hex = pk_hex[2:]
+
+            account = Account.from_key(pk_hex)
+
+            # payload_hash is expected as a hex string (optionally 0x-prefixed)
+            hash_bytes = to_bytes(hexstr=payload_hash)
+            if len(hash_bytes) != 32:
+                raise ValueError("payload_hash must be a 32-byte hex string")
+
+            signed = account.unsafe_sign_hash(hash_bytes)
+            signature = signed.signature.hex()
         finally:
             # Overwrite sensitive buffers
             for i in range(len(key_bytes)):
                 key_bytes[i] = 0
             _munlock_buffer(key_bytes)
             del key_bytes
-            del payload_bytes
             # Best-effort clear of the immutable string reference
             private_key = "0" * len(private_key)
             del private_key
 
-        return sig
+        return signature

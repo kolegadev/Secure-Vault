@@ -1,107 +1,75 @@
 # Trading Bot Integration Guide
 
-## Purpose
+## Situation
 
-This document is a step-by-step playbook for connecting an external trading bot (or any remote client) to the **OpenClaw Secret Server** running on a Linux host. The bot will:
+Your **trading bot** and your **Secure Vault** are on the **same Linux machine**. The vault is mounted at `/mnt/securevault`. The bot needs to sign blockchain transactions (e.g., Polymarket) using a private key stored in the vault.
 
-1. Retrieve runtime secrets (API keys, etc.) from the vault **without** ever seeing the private key.
-2. Request cryptographic signatures for blockchain transactions from the **Signing Agent** — again, the private key never leaves the host.
-
-This guide assumes the OpenClaw Secure Vault (Node backend + VeraCrypt/LUKS mount) is already running on the Linux machine. The Secret Server is a separate Python FastAPI layer that adds remote API access and signing.
+There are **two ways** to do this. Pick one.
 
 ---
 
-## Prerequisites (must be true before you start)
+## Path A — Direct Key Read (Simplest)
 
-| # | Requirement | How to verify |
-|---|-------------|---------------|
-| 1 | Linux host is running | `uname -a` |
-| 2 | Encrypted vault is mounted | `ls /mnt/securevault` shows directories |
-| 3 | Node vault (`:3001`) is running | `curl http://localhost:3001/api/health` |
-| 4 | At least one env var exists in the Node UI | `ls /mnt/securevault/secrets/.env` |
-| 5 | Python 3.11+ installed | `python3 --version` |
-| 6 | You have `sudo` access | `sudo whoami` |
+Since the bot and vault are on the same machine, the bot can read the private key directly from the mounted encrypted volume and sign locally using `eth-account` or `web3.py`.
+
+**Pros:** Zero services to configure. Two lines of code.  
+**Cons:** The private key exists briefly in the bot's memory.
+
+### Step A1 — Place the key on the vault
+
+The user must place the raw hex private key on the vault:
+
+```bash
+sudo mkdir -p /mnt/securevault/crypto
+sudo chmod 700 /mnt/securevault/crypto
+sudo tee /mnt/securevault/crypto/polymarket.key > /dev/null
+# User pastes their raw hex EVM private key (with or without 0x prefix), then Ctrl+D
+sudo chmod 600 /mnt/securevault/crypto/polymarket.key
+```
+
+### Step A2 — Bot code
+
+```python
+from eth_account import Account
+
+# Read the key directly from the mounted vault
+with open("/mnt/securevault/crypto/polymarket.key", "r") as f:
+    private_key = f.read().strip()
+
+account = Account.from_key(private_key)
+
+# Sign any 32-byte hash
+payload_hash = "0x" + "aa" * 32  # your keccak256 hash
+signed = account.unsafe_sign_hash(bytes.fromhex(payload_hash[2:]))
+signature = signed.signature.hex()
+
+print("Address:", account.address)
+print("Signature:", signature)
+```
+
+**Dependencies:** `pip install eth-account`
+
+That's it. No API keys, no profiles, no services. The bot reads the key from the encrypted volume just like reading any other file.
 
 ---
 
-## Part 1 — Install the Secret Server
+## Path B — Secret Server API (More Secure)
 
-The Secret Server is **not** installed automatically by `bin/setup.sh`. It has its own installer.
+The bot never touches the private key. It sends a hash to a local API (`localhost:8787`) and receives back a signature. The key stays inside the hardened signing agent's memory.
 
-### Step 1.1 — Run the installer
+**Pros:** Key never enters bot's memory. Rate limiting and audit logs.  
+**Cons:** Requires installing and running the secret-server + signing-agent.
+
+### Step B1 — Install the secret-server
 
 ```bash
 cd ~/secure-vault/secret-server
 sudo bash deploy/install.sh
 ```
 
-**What this does:**
-- Creates two system users: `secretserver` and `signingagent`
-- Copies code to `/opt/secret-server`
-- Creates a Python virtual environment at `/opt/secret-server/venv`
-- Installs systemd services: `secret-server.service` and `signing-agent.service`
+This creates two system users (`secretserver`, `signingagent`) and installs systemd services.
 
-**Expected output:**
-```
-Installing OpenClaw Secret Server...
-Installation complete.
-Startup order:
-  tailscaled → openclaw-vault (mount) → secret-server → signing-agent
-```
-
-### Step 1.2 — Verify installation
-
-```bash
-ls -la /opt/secret-server/
-# Should show: deploy/  src/  venv/  requirements.txt
-
-ls -la /etc/systemd/system/secret-server.service
-ls -la /etc/systemd/system/signing-agent.service
-# Both should exist
-```
-
----
-
-## Part 2 — Provision the Vault Files
-
-The Secret Server reads **only** from files on `/mnt/securevault`. The Node vault auto-syncs env vars, but three things must be created manually.
-
-### Step 2.1 — Ensure the V2 directory structure exists
-
-```bash
-sudo mkdir -p /mnt/securevault/{secrets,config/auth,skills,crypto,exports,audit}
-```
-
-**Verify:**
-```bash
-ls -la /mnt/securevault/
-# Should show: audit  config  crypto  exports  secrets  skills  vault-manifest.json
-```
-
-> **Note:** `vault-manifest.json` is created automatically by the Node vault or migration script. If missing, the secret-server will still work but will log a warning.
-
-### Step 2.2 — Verify env vars are synced
-
-The Node backend writes `/mnt/securevault/secrets/.env` automatically whenever you create/update/delete an env var in the web UI.
-
-```bash
-cat /mnt/securevault/secrets/.env
-```
-
-**Expected output example:**
-```
-POLY_API_KEY=abc123
-POLY_API_SECRET=xyz789
-WALLET_ADDRESS=0x...
-```
-
-**If this file is missing:** Open the web UI at `http://localhost:3001`, go to **Environment Variables**, and create any variable. The file will appear instantly.
-
-### Step 2.3 — Create the auth profiles file
-
-This file controls **who** can access **what**. Without it, every API call is rejected.
-
-Create `/mnt/securevault/config/auth/profiles.json`:
+### Step B2 — Create the auth profile
 
 ```bash
 sudo mkdir -p /mnt/securevault/config/auth
@@ -109,7 +77,7 @@ sudo tee /mnt/securevault/config/auth/profiles.json > /dev/null <<'EOF'
 {
   "clients": {
     "trading-bot": {
-      "api_key": "sk-vault-bot-REPLACE_ME",
+      "api_key": "sk-vault-bot-<random-token>",
       "allowed_profiles": ["trading-runtime"],
       "can_sign": true,
       "is_admin": false
@@ -127,488 +95,116 @@ sudo chmod 640 /mnt/securevault/config/auth/profiles.json
 sudo chown secretserver:secretserver /mnt/securevault/config/auth/profiles.json
 ```
 
-**Generate a real API key (run this and paste it into the file above):**
-
+Generate the token:
 ```bash
 python3 -c "import secrets; print('sk-vault-bot-' + secrets.token_hex(24))"
 ```
 
-**Example output:** `sk-vault-bot-a1b2c3d4e5f6...`
-
-> **Important:** This API key is a *capability token*. It is **not** your EVM private key. It only proves the bot is authorized to talk to the secret-server.
-
-### Step 2.4 — Place the signing key
-
-The Signing Agent reads the private key from `/mnt/securevault/crypto/polymarket.key`. This is the **most sensitive file**. The user must place it manually.
-
-**Tell the user to run:**
+### Step B3 — Place the signing key
 
 ```bash
 sudo mkdir -p /mnt/securevault/crypto
 sudo chmod 700 /mnt/securevault/crypto
 sudo tee /mnt/securevault/crypto/polymarket.key > /dev/null
-# Then they paste their raw hex private key (no 0x prefix) and press Ctrl+D
+# User pastes raw hex private key, then Ctrl+D
 sudo chmod 600 /mnt/securevault/crypto/polymarket.key
 sudo chown signingagent:signingagent /mnt/securevault/crypto/polymarket.key
 ```
 
-**Verify the key file exists and has correct ownership:**
+### Step B4 — Start services
 
 ```bash
-ls -la /mnt/securevault/crypto/polymarket.key
-# -rw------- 1 signingagent signingagent ... /mnt/securevault/crypto/polymarket.key
-```
-
-> **Critical:** Never store this file in the Node SQLite DB. The Signing Agent reads it directly from the encrypted volume.
-
-### Step 2.5 — Ensure correct permissions for the vault mount
-
-The `secretserver` and `signingagent` users need read access to the mounted volume.
-
-```bash
-sudo chmod 755 /mnt/securevault
-sudo chmod 755 /mnt/securevault/secrets
-sudo chmod 755 /mnt/securevault/config
-sudo chmod 700 /mnt/securevault/crypto
-```
-
----
-
-## Part 3 — Start the Services
-
-### Step 3.1 — Service startup order (enforced by systemd)
-
-The systemd units already declare dependencies:
-
-```
-tailscaled (optional) → openclaw-vault → secret-server → signing-agent
-```
-
-Start them in order if they are not already running:
-
-```bash
-# 1. Mount the vault
-sudo systemctl start openclaw-vault
-
-# 2. Start the secret server
+sudo systemctl start openclaw-vault   # if not already mounted
 sudo systemctl start secret-server
-
-# 3. Start the signing agent
 sudo systemctl start signing-agent
 ```
 
-> Tailscale is only required if `SECRET_SERVER_TAILSCALE_ONLY=true` (the default). If you are running locally without Tailscale, set `SECRET_SERVER_TAILSCALE_ONLY=false` and `SECRET_SERVER_HOST=127.0.0.1` in the secret-server environment before starting.
+### Step B5 — Bot code
 
-### Step 3.2 — Verify each service is active
+```python
+import os
+import requests
 
-```bash
-sudo systemctl is-active openclaw-vault
-sudo systemctl is-active secret-server
-sudo systemctl is-active signing-agent
+VAULT_URL = "http://127.0.0.1:8787"
+VAULT_API_KEY = os.environ["VAULT_API_KEY"]  # the token from Step B2
+
+# Sign a payload hash (the API returns a real ECDSA secp256k1 signature)
+response = requests.post(
+    f"{VAULT_URL}/sign/polymarket",
+    headers={"X-API-Key": VAULT_API_KEY, "Content-Type": "application/json"},
+    json={"payload_hash": "0x" + "aa" * 32, "market": "ETH-USD", "purpose": "order"}
+)
+response.raise_for_status()
+signature = response.json()["signature"]
+print("Signature:", signature)
 ```
 
-**All three should print:** `active`
-
-### Step 3.3 — Verify the secret-server responds
-
-**If running locally (no Tailscale):**
-```bash
-curl -s http://127.0.0.1:8787/health | jq .
-```
-
-**If running over Tailscale:**
-```bash
-curl -s http://100.x.x.x:8787/health | jq .
-```
-Replace `100.x.x.x` with the host's Tailscale IP (`tailscale ip -4`).
-
-**Expected output:**
-```json
-{
-  "status": "ok",
-  "version": "2.0.0-alpha",
-  "vault_mounted": true,
-  "tailscale_only": true
-}
-```
-
-If `vault_mounted` is `false`, the vault is not mounted at `/mnt/securevault`.
+**Dependencies:** `pip install requests`
 
 ---
 
-## Part 4 — Test the API Endpoints
+## Which path should you choose?
 
-### Step 4.1 — Test secret retrieval (localhost)
+| Concern | Choose |
+|---------|--------|
+| "I want the absolute minimum setup" | **Path A** — direct file read |
+| "I want the key out of the bot process" | **Path B** — API signing |
+| "I need rate limiting and audit logs" | **Path B** — API signing |
+| "The bot might be moved to another machine later" | **Path B** — API signing (just change `127.0.0.1` to Tailscale IP) |
 
-```bash
-export VAULT_API_KEY="sk-vault-bot-<the-key-from-step-2.3>"
+---
 
-curl -s -X POST http://127.0.0.1:8787/secrets/runtime-env \
-  -H "X-API-Key: $VAULT_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"profile":"trading-runtime"}' | jq .
-```
+## Quick Verification (Path B only)
 
-**Expected output:**
-```json
-{
-  "profile": "trading-runtime",
-  "secrets": {
-    "POLY_API_KEY": "abc123",
-    "POLY_API_SECRET": "xyz789",
-    "WALLET_ADDRESS": "0x..."
-  }
-}
-```
-
-**Common errors:**
-- `401 Invalid API key` → `profiles.json` is missing or the key doesn't match.
-- `403 Profile not allowed` → The `allowed_profiles` array doesn't include `"trading-runtime"`.
-- `404 Env file not found` → `/mnt/securevault/secrets/.env` is missing. Create an env var in the Node UI.
-- `503 Vault is not mounted` → `openclaw-vault.service` is not running or the mount point is wrong.
-
-### Step 4.2 — Test signing with a dummy hash
+If you chose Path B, verify everything works before running the bot:
 
 ```bash
+export VAULT_API_KEY="sk-vault-bot-<your-token>"
+
+# Test signing
 curl -s -X POST http://127.0.0.1:8787/sign/polymarket \
   -H "X-API-Key: $VAULT_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"payload_hash":"deadbeef","market":"ETH-USD","purpose":"test"}' | jq .
+  -d '{"payload_hash":"0x'$(python3 -c "print('aa'*32)")'","market":"ETH-USD","purpose":"test"}'
 ```
 
-**Expected output:**
+Expected output (real ECDSA signature, ~130 hex chars):
 ```json
-{
-  "signature": "a1b2c3d4...",
-  "signer": "polymarket"
-}
-```
-
-**Common errors:**
-- `403 Signing not allowed` → The client in `profiles.json` has `"can_sign": false`.
-- `429 Rate limit exceeded` → More than 10 signing requests in the last 60 seconds. Wait and retry.
-- `503 Signing agent unavailable` → The signing-agent socket is missing or the service is down.
-- `500 Internal server error` → The key file is missing or unreadable. Check `/mnt/securevault/crypto/polymarket.key`.
-
-### Step 4.3 — Test from a remote machine (optional, over Tailscale)
-
-If the bot runs on a different machine on the same Tailscale network:
-
-```bash
-export VAULT_HOST="100.x.x.x"   # The vault host's Tailscale IP
-export VAULT_API_KEY="sk-vault-bot-..."
-
-curl -s http://$VAULT_HOST:8787/health | jq .
-
-curl -s -X POST http://$VAULT_HOST:8787/secrets/runtime-env \
-  -H "X-API-Key: $VAULT_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"profile":"trading-runtime"}' | jq .
-```
-
-If this fails with `Connection refused`, Tailscale ACLs may be blocking port `8787`, or the secret-server may be bound to `127.0.0.1` only. Ensure the host's Tailscale IP is reachable (`ping 100.x.x.x`).
-
----
-
-## Part 5 — Bot Code Example (Python)
-
-This is a **complete, working** Python client. Copy it into your trading bot project.
-
-```python
-"""
-OpenClaw Secret Server client for trading bots.
-
-Requires: pip install requests
-"""
-import os
-import time
-from typing import Dict, Optional
-
-import requests
-
-
-class VaultClientError(Exception):
-    pass
-
-
-class VaultClient:
-    """
-    Client for the OpenClaw Secret Server.
-
-    Usage:
-        client = VaultClient(
-            base_url="http://127.0.0.1:8787",   # or Tailscale IP
-            api_key="sk-vault-bot-..."
-        )
-
-        secrets = client.get_secrets("trading-runtime")
-        signature = client.sign_polymarket(
-            payload_hash="0xdeadbeef...",
-            market="ETH-USD",
-            purpose="market-order"
-        )
-    """
-
-    def __init__(
-        self,
-        base_url: str,
-        api_key: str,
-        timeout: int = 10,
-        max_retries: int = 3,
-    ):
-        self.base_url = base_url.rstrip("/")
-        self.api_key = api_key
-        self.timeout = timeout
-        self.max_retries = max_retries
-        self._session = requests.Session()
-        self._session.headers.update({
-            "X-API-Key": self.api_key,
-            "Content-Type": "application/json",
-        })
-
-    def _request(self, method: str, path: str, **kwargs) -> dict:
-        url = f"{self.base_url}{path}"
-        last_err = None
-
-        for attempt in range(1, self.max_retries + 1):
-            try:
-                resp = self._session.request(
-                    method, url, timeout=self.timeout, **kwargs
-                )
-                resp.raise_for_status()
-                return resp.json()
-            except requests.exceptions.HTTPError as exc:
-                if exc.response.status_code == 429:
-                    # Rate limited — backoff and retry
-                    wait = attempt * 2
-                    time.sleep(wait)
-                    last_err = exc
-                    continue
-                raise VaultClientError(
-                    f"Vault API error {exc.response.status_code}: {exc.response.text}"
-                )
-            except requests.exceptions.RequestException as exc:
-                last_err = exc
-                time.sleep(attempt)
-                continue
-
-        raise VaultClientError(f"Vault request failed after {self.max_retries} attempts: {last_err}")
-
-    def health(self) -> dict:
-        """Check vault health. Does not require API key."""
-        resp = requests.get(f"{self.base_url}/health", timeout=self.timeout)
-        resp.raise_for_status()
-        return resp.json()
-
-    def get_secrets(self, profile: str = "trading-runtime") -> Dict[str, str]:
-        """Retrieve runtime secrets from the vault."""
-        result = self._request(
-            "POST",
-            "/secrets/runtime-env",
-            json={"profile": profile},
-        )
-        return result.get("secrets", {})
-
-    def sign_polymarket(
-        self,
-        payload_hash: str,
-        market: Optional[str] = None,
-        purpose: Optional[str] = None,
-    ) -> str:
-        """
-        Sign a payload hash using the polymarket key.
-
-        Returns the signature hex string.
-        """
-        body = {"payload_hash": payload_hash}
-        if market:
-            body["market"] = market
-        if purpose:
-            body["purpose"] = purpose
-
-        result = self._request("POST", "/sign/polymarket", json=body)
-        return result["signature"]
-
-    def sign_generic(self, key_id: str, payload_hash: str, purpose: Optional[str] = None) -> str:
-        """Sign with any key ID (e.g. 'polymarket')."""
-        body = {"payload_hash": payload_hash}
-        if purpose:
-            body["purpose"] = purpose
-
-        result = self._request("POST", f"/sign/{key_id}", json=body)
-        return result["signature"]
-
-
-# ──────────────────────────────────────────────
-# Example usage (paste into your bot)
-# ──────────────────────────────────────────────
-if __name__ == "__main__":
-    client = VaultClient(
-        base_url=os.environ.get("VAULT_URL", "http://127.0.0.1:8787"),
-        api_key=os.environ["VAULT_API_KEY"],
-    )
-
-    # 1. Check health
-    print("Health:", client.health())
-
-    # 2. Load secrets
-    secrets = client.get_secrets("trading-runtime")
-    print("Loaded secrets:", list(secrets.keys()))
-
-    # 3. Sign something
-    sig = client.sign_polymarket(
-        payload_hash="0xdeadbeef",
-        market="ETH-USD",
-        purpose="test"
-    )
-    print("Signature:", sig)
+{"signature": "a1b2c3d4...", "signer": "polymarket"}
 ```
 
 ---
 
-## Part 6 — One-Command Diagnostics Script
+## Troubleshooting
 
-Run this on the vault host to see the entire state at a glance:
+### `401 Invalid API key` (Path B)
+- The `api_key` in `profiles.json` doesn't match what the bot sends.
+- Fix: restart the secret-server after editing `profiles.json`:
+  ```bash
+  sudo systemctl restart secret-server
+  ```
 
-```bash
-#!/bin/bash
-set -e
+### `403 Signing not allowed` (Path B)
+- The client in `profiles.json` has `"can_sign": false`. Change it to `true`.
 
-echo "========================================"
-echo "OpenClaw Secret Server Diagnostics"
-echo "========================================"
+### `503 Signing agent unavailable` (Path B)
+- The signing-agent service is not running:
+  ```bash
+  sudo systemctl status signing-agent
+  sudo systemctl start signing-agent
+  ```
 
-echo ""
-echo "--- Service Status ---"
-for svc in openclaw-vault secret-server signing-agent; do
-    printf "%-20s %s\n" "$svc:" "$(systemctl is-active $svc 2>/dev/null || echo 'not found')"
-done
+### `FileNotFoundError: Key file not found` (both paths)
+- `/mnt/securevault/crypto/polymarket.key` is missing. Place it per Step A1/B3.
 
-echo ""
-echo "--- Mount Point ---"
-ls -ld /mnt/securevault 2>/dev/null || echo "MISSING"
-
-echo ""
-echo "--- Vault Files ---"
-for f in secrets/.env config/auth/profiles.json crypto/polymarket.key; do
-    path="/mnt/securevault/$f"
-    if [ -f "$path" ]; then
-        printf "%-40s OK  (%s)\n" "$f" "$(stat -c '%U:%G %a' "$path")"
-    else
-        printf "%-40s MISSING\n" "$f"
-    fi
-done
-
-echo ""
-echo "--- Secret Server Health ---"
-curl -s "http://127.0.0.1:8787/health" | jq . 2>/dev/null || echo "FAILED (is secret-server running?)"
-
-echo ""
-echo "--- Signing Agent Socket ---"
-ls -la /run/signing-agent/signing.sock 2>/dev/null || echo "MISSING"
-
-echo ""
-echo "========================================"
-echo "Diagnostics complete"
-echo "========================================"
-```
-
-Save it as `~/vault-diag.sh`, run `chmod +x ~/vault-diag.sh && ~/vault-diag.sh`.
+### `ValueError: payload_hash must be a 32-byte hex string` (both paths)
+- The hash you are signing must be exactly 64 hex characters (32 bytes). Example: `"0x" + "aa" * 32`.
 
 ---
 
-## Part 7 — Troubleshooting Quick Reference
+## What changed in the codebase
 
-### Secret Server won't start
-
-```bash
-sudo journalctl -u secret-server -n 50 --no-pager
-```
-
-Common causes:
-- Tailscale IP not found but `tailscale_only=true` → Either run `tailscale up` or set `SECRET_SERVER_TAILSCALE_ONLY=false`.
-- Port 8787 in use → `sudo lsof -i :8787`
-- Missing Python deps → Re-run `sudo bash deploy/install.sh`
-
-### `401 Invalid API key`
-
-1. Check `profiles.json` exists: `cat /mnt/securevault/config/auth/profiles.json`
-2. Verify the key in the file matches exactly what the bot sends.
-3. The secret-server caches profiles in memory. Restart it after editing:
-   ```bash
-   sudo systemctl restart secret-server
-   ```
-
-### `403 Signing not allowed`
-
-The bot client in `profiles.json` must have `"can_sign": true`. Example:
-```json
-"trading-bot": {
-  "api_key": "...",
-  "can_sign": true
-}
-```
-
-### `503 Signing agent unavailable`
-
-1. Check the signing-agent service:
-   ```bash
-   sudo systemctl status signing-agent
-   ```
-2. Check the socket exists:
-   ```bash
-   ls -la /run/signing-agent/signing.sock
-   ```
-3. If missing, restart:
-   ```bash
-   sudo systemctl restart signing-agent
-   ```
-4. Check the agent logs:
-   ```bash
-   sudo journalctl -u signing-agent -n 50 --no-pager
-   ```
-
-### `404 Env file not found`
-
-The file `/mnt/securevault/secrets/.env` is missing. Fix:
-1. Open the Node vault UI (`http://localhost:3001`)
-2. Create any environment variable
-3. Verify: `cat /mnt/securevault/secrets/.env`
-
-### `500 Internal server error` on signing
-
-The Signing Agent could not read the key file. Check:
-```bash
-sudo ls -la /mnt/securevault/crypto/polymarket.key
-sudo -u signingagent head -c 10 /mnt/securevault/crypto/polymarket.key
-```
-If the second command fails with "Permission denied", the ownership or permissions are wrong. Fix:
-```bash
-sudo chown signingagent:signingagent /mnt/securevault/crypto/polymarket.key
-sudo chmod 600 /mnt/securevault/crypto/polymarket.key
-```
-
----
-
-## Part 8 — Security Checklist
-
-Before putting real funds through this system:
-
-- [ ] `polymarket.key` is `chmod 600` and owned by `signingagent`
-- [ ] `profiles.json` is `chmod 640` and owned by `secretserver`
-- [ ] The bot API key is a randomly generated token (not reused from anywhere else)
-- [ ] If exposed over Tailscale, the host firewall blocks port `8787` from non-Tailscale interfaces
-- [ ] Swap is disabled or encrypted (signing agent uses `mlock` best-effort)
-- [ ] The vault auto-locks after a timeout (configure in the Node UI Settings)
-- [ ] The signing-agent service has `AmbientCapabilities=CAP_IPC_LOCK` (check with `systemctl cat signing-agent`)
-
----
-
-## Summary of Files and Responsibilities
-
-| File | Who creates it | How |
-|------|----------------|-----|
-| `/mnt/securevault/secrets/.env` | **Node backend** (auto) | Create env var in web UI |
-| `/mnt/securevault/config/auth/profiles.json` | **You (Claude Code)** | `sudo tee` the JSON file |
-| `/mnt/securevault/crypto/polymarket.key` | **User** (manual) | Paste raw hex key, `chmod 600` |
-| `/mnt/securevault/vault-manifest.json` | **Node backend** (auto) | Migration or first mount |
+1. **`secret-server/src/secret_server/api/secrets.py`** — Default env filename changed from `runtime.env` to `.env` so it matches the Node backend's auto-sync.
+2. **`secret-server/src/secret_server/signing/agent.py`** — Replaced the HMAC-SHA256 placeholder with **real ECDSA secp256k1 signing** via `eth-account`.
+3. **`secret-server/requirements.txt` / `pyproject.toml`** — Added `eth-account>=0.13.0` dependency.
+4. **`docs/trading-bot-integration.md`** — Rewritten for same-machine setups with two clear paths.
