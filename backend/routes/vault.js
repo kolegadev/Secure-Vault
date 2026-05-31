@@ -106,11 +106,9 @@ router.post('/backup-header', requireAuth, async (req, res, next) => {
         error: { code: 'NOT_SUPPORTED', message: 'Header backup is not supported by the current vault provider' },
       });
     }
-    const { outputPath } = req.body;
-    if (!outputPath) {
-      return res.status(400).json({ success: false, error: { code: 'MISSING_PATH', message: 'Output path required' } });
-    }
-    const result = await provider.backupHeader(outputPath);
+    const { suggestedName } = req.body;
+    // suggestedName is optional - if not provided, default name will be used
+    const result = await provider.backupHeader(suggestedName);
     res.json({ success: result.success, data: result });
   } catch (err) {
     next(err);

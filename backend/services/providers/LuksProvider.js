@@ -348,37 +348,52 @@ export class LuksProvider extends VaultProvider {
     }
   }
 
-  async backupHeader(outputPath) {
+  async backupHeader(userSuggestedName) {
     if (!this.deviceExists()) {
       return { success: false, message: `Device ${this._devicePath()} not found` };
     }
-    const validatedPath = this._validateOutputPath(outputPath);
-    if (!validatedPath) {
-      return { success: false, message: 'Invalid output path: contains unsafe characters' };
-    }
+    const secureBackupPath = this._generateSecureBackupPath(userSuggestedName);
     try {
       const result = await this._exec(
         'sudo',
-        ['cryptsetup', 'luksHeaderBackup', this._devicePath(), '--header-backup-file', validatedPath]
+        ['cryptsetup', 'luksHeaderBackup', this._devicePath(), '--header-backup-file', secureBackupPath]
       );
       if (result.code !== 0) {
         return { success: false, message: `Header backup failed: ${result.stderr}` };
       }
-      logger.info({ outputPath: validatedPath }, 'LUKS header backed up');
-      return { success: true, message: 'Header backed up successfully' };
+      logger.info({ backupPath: secureBackupPath }, 'LUKS header backed up');
+      return { 
+        success: true, 
+        message: `Header backed up successfully to: ${secureBackupPath}`,
+        backupPath: secureBackupPath
+      };
     } catch (error) {
       logger.error({ error }, 'Header backup error');
       return { success: false, message: error.message };
     }
   }
 
-  _validateOutputPath(outputPath) {
-    const dangerousChars = /[;&|$`<>(){}[\]\\'"]/;
-    if (dangerousChars.test(outputPath)) return null;
-    const resolvedPath = path.resolve(outputPath);
-    const allowedChars = /^[a-zA-Z0-9.\-_/]+$/;
-    if (!allowedChars.test(resolvedPath)) return null;
-    if (resolvedPath.includes('\0') || /[\x00-\x1F\x7F]/.test(resolvedPath)) return null;
-    return resolvedPath;
+  _generateSecureBackupPath(userSuggestedName) {
+    // Create temp directory if it doesn't exist
+    const tempDir = '/tmp/luks-backups';
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { mode: 0o700 }); // Only owner can access
+    }
+
+    // Sanitize user-suggested name to prevent any path issues
+    let sanitizedName = 'luks-header';
+    if (userSuggestedName && typeof userSuggestedName === 'string') {
+      // Only allow alphanumeric, dots, hyphens, underscores
+      const cleaned = userSuggestedName.replace(/[^a-zA-Z0-9.\-_]/g, '');
+      if (cleaned && cleaned.length > 0 && cleaned.length <= 100) {
+        sanitizedName = cleaned;
+      }
+    }
+
+    // Generate unique filename with timestamp to prevent conflicts
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `${sanitizedName}-${timestamp}.backup`;
+    
+    return path.join(tempDir, filename);
   }
 }
