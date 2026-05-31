@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **`bin/update-vault.sh`** — Safe in-place update script for deployed instances. Stops the service, backs up the SQLite DB (with retention pruning), pulls the latest branch into the source clone, syncs **code only** into the deployment (preserving `backend/.env`, `backend/data/`, `node_modules`, and `frontend/dist`), then runs `npm install`/`build`/`db:migrate` **inside the deployment under its own Node version** to avoid the `better-sqlite3` `NODE_MODULE_VERSION` mismatch that re-running `bin/setup.sh` would cause. Configurable via env (`VAULT_APP`, `VAULT_SERVICE`, `VAULT_BRANCH`, `VAULT_PORT`, `GITHUB_TOKEN`, `KEEP_BACKUPS`). Codifies the "Updating a Deployed Instance" procedure in the README.
+
+### Changed
+
+- **Signing Agent** — Replaced the HMAC-SHA256 placeholder with real ECDSA secp256k1 signing via `eth_keys`: signs 32-byte keccak256 digests and returns a 65-byte `0x + r + s + v` Ethereum-compatible signature. Adds the `eth-account>=0.13` dependency.
+
+---
+
 ## [2.0.0-alpha] — 2026-05-30
 
 ### Added
