@@ -16,8 +16,8 @@ def client(tmp_path):
 
     crypto_dir = vault / "crypto"
     crypto_dir.mkdir()
-    (crypto_dir / "polymarket.key").write_text("polymarket-secret-key")
-    (crypto_dir / "test.key").write_text("test-secret-key")
+    (crypto_dir / "polymarket.key").write_text("aa" * 32)
+    (crypto_dir / "test.key").write_text("bb" * 32)
 
     config_dir = vault / "config" / "auth"
     config_dir.mkdir(parents=True)
@@ -111,20 +111,20 @@ def test_sign_generic_missing_payload_hash(client):
 def test_sign_generic_success(client):
     response = client.post(
         "/sign/test",
-        json={"payload_hash": "deadbeef", "purpose": "unit-test"},
+        json={"payload_hash": "ab" * 32, "purpose": "unit-test"},
         headers={"X-API-Key": "test-key-123"},
     )
     assert response.status_code == 200
     data = response.json()
     assert "signature" in data
     assert data["signer"] == "test"
-    assert len(data["signature"]) == 64
+    assert len(data["signature"]) == 132
 
 
 def test_sign_polymarket_success(client):
     response = client.post(
         "/sign/polymarket",
-        json={"payload_hash": "cafebabe", "market": "ETH-USD", "purpose": "trade"},
+        json={"payload_hash": "cd" * 32, "market": "ETH-USD", "purpose": "trade"},
         headers={"X-API-Key": "test-key-123"},
     )
     assert response.status_code == 200
@@ -138,7 +138,7 @@ def test_sign_generic_rate_limit(client):
     for i in range(10):
         response = client.post(
             "/sign/test",
-            json={"payload_hash": f"hash{i}"},
+            json={"payload_hash": f"{i:064x}"},
             headers={"X-API-Key": "test-key-123"},
         )
         assert response.status_code == 200
@@ -146,7 +146,7 @@ def test_sign_generic_rate_limit(client):
     # Next request should be rate limited
     response = client.post(
         "/sign/test",
-        json={"payload_hash": "hash11"},
+        json={"payload_hash": "0b" * 32},
         headers={"X-API-Key": "test-key-123"},
     )
     assert response.status_code == 429
