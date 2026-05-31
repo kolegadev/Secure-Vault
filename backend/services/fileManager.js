@@ -25,12 +25,34 @@ export function readFile(filePath) {
  * @param {string} content
  */
 export function writeFile(filePath, content) {
-  const fullPath = resolveVaultPath(filePath);
-  requireMounted();
+  // Early validation before path resolution
+  if (typeof filePath !== 'string' || filePath.trim() === '') {
+    throw new Error('Invalid file path');
+  }
 
-  // Additional security check: ensure path is within allowed subdirectories.
-  const relativePath = path.relative(getMountPoint(), fullPath);
-  const pathParts = relativePath.split(path.sep).filter(p => p);
+  // Check for null bytes and control characters
+  if (filePath.includes('\0') || /[\x00-\x1f]/.test(filePath)) {
+    throw new Error('Invalid characters in file path');
+  }
+
+  // Normalize and validate path structure before resolution
+  const normalizedPath = filePath.replace(/[/\\]+/g, path.sep).replace(/^[/\\]+/, '');
+  const pathParts = normalizedPath.split(path.sep).filter(p => p);
+  
+  // Track effective depth to prevent traversal
+  let effectiveDepth = 0;
+  for (const part of pathParts) {
+    if (part === '..') {
+      effectiveDepth--;
+      if (effectiveDepth < 0) {
+        throw new Error('Path traversal detected: path escapes vault directory');
+      }
+    } else if (part !== '.') {
+      effectiveDepth++;
+    }
+  }
+
+  // Validate against allowed directories
   const configuredDirs = Object.entries(config.paths)
     .filter(([k]) => k.endsWith('Dir'))
     .map(([, v]) => v);
@@ -40,17 +62,72 @@ export function writeFile(filePath, content) {
     'env', 'services', // Legacy V1 directory names for backward compatibility
   ]);
 
-  if (pathParts.length > 0 && !allowedDirs.has(pathParts[0])) {
+  const firstDir = pathParts.find(p => p !== '.' && p !== '..');
+  if (firstDir && !allowedDirs.has(firstDir)) {
     throw new Error('Write path not in allowed directory');
   }
 
-  const dir = path.dirname(fullPath);
+  requireMounted();
+  const fullPath = resolveVaultPath(normalizedPath);
+
+  // Resolve symlinks and validate final target path
+  let realPath;
+  try {
+    // Check if parent directories contain symlinks that escape vault
+    const mountPoint = getMountPoint();
+    const normalizedMount = path.resolve(mountPoint);
+    
+    // Walk the path components to detect symlinks
+    let currentPath = normalizedMount;
+    for (const part of pathParts) {
+      if (!part || part === '.') continue;
+      
+      const nextPath = path.join(currentPath, part);
+      try {
+        const stats = fs.lstatSync(nextPath);
+        if (stats.isSymbolicLink()) {
+          const linkTarget = fs.realpathSync(nextPath);
+          const normalizedTarget = path.resolve(linkTarget);
+          if (!normalizedTarget.startsWith(normalizedMount + path.sep) && normalizedTarget !== normalizedMount) {
+            throw new Error('Symlink points outside vault directory');
+          }
+          currentPath = normalizedTarget;
+        } else {
+          currentPath = nextPath;
+        }
+      } catch (err) {
+        if (err.code === 'ENOENT') {
+          // Path doesn't exist yet, continue validation
+          currentPath = nextPath;
+        } else {
+          throw err;
+        }
+      }
+    }
+    realPath = currentPath;
+  } catch (err) {
+    if (err.message.includes('outside vault') || err.message.includes('Symlink points')) {
+      throw new Error('Path traversal detected: symlink escapes vault directory');
+    }
+    // For ENOENT and other non-security errors, use the resolved path
+    realPath = fullPath;
+  }
+
+  // Final containment check
+  const mountPoint = getMountPoint();
+  const normalizedMount = path.resolve(mountPoint);
+  const normalizedReal = path.resolve(realPath);
+  if (!normalizedReal.startsWith(normalizedMount + path.sep) && normalizedReal !== normalizedMount) {
+    throw new Error('Path traversal detected: resolved path escapes vault directory');
+  }
+
+  const dir = path.dirname(realPath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o750 });
   }
 
   // Write file with restrictive permissions
-  fs.writeFileSync(fullPath, content, { mode: 0o640 });
+  fs.writeFileSync(realPath, content, { mode: 0o640 });
   logger.info({ path: filePath }, 'File written to vault');
 }
 
