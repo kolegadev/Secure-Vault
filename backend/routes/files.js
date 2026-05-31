@@ -28,7 +28,7 @@ const FILE_UPLOAD_CONFIG = {
   allowedSubdirectories: ['documents', 'exports', 'uploads', 'backups', 'user-files']
 };
 
-function validateFileUpload(filePath, content) {
+function validateFilePath(filePath) {
   const errors = [];
   
   // Basic validation
@@ -36,23 +36,52 @@ function validateFileUpload(filePath, content) {
     errors.push({ code: 'INVALID_PATH', message: 'File path is required' });
     return { isValid: false, errors };
   }
-  
-  if (content === undefined || content === null) {
-    errors.push({ code: 'INVALID_CONTENT', message: 'File content is required' });
-    return { isValid: false, errors };
-  }
 
-  // Path traversal protection
-  const normalizedPath = path.normalize(filePath);
-  if (normalizedPath.includes('..') || filePath.includes('\0')) {
+  // Check for null bytes before any processing
+  if (filePath.includes('\x00') || filePath.includes('%00')) {
     errors.push({ code: 'PATH_TRAVERSAL', message: 'Invalid file path' });
     return { isValid: false, errors };
   }
 
-  // Check allowed subdirectories
-  const pathParts = normalizedPath.split(path.sep).filter(p => p);
-  if (pathParts.length > 0 && !FILE_UPLOAD_CONFIG.allowedSubdirectories.includes(pathParts[0])) {
+  // Path traversal protection - normalize and check for traversal patterns
+  const normalizedPath = path.normalize(filePath);
+  
+  // After normalization, check for remaining ".." segments
+  const pathSegments = normalizedPath.split(path.sep).filter(p => p);
+  if (pathSegments.some(segment => segment === '..')) {
+    errors.push({ code: 'PATH_TRAVERSAL', message: 'Invalid file path' });
+    return { isValid: false, errors };
+  }
+
+  // Ensure path doesn't start with / (absolute path) or contain backslash sequences
+  if (normalizedPath.startsWith('/') || normalizedPath.includes('\\')) {
+    errors.push({ code: 'PATH_TRAVERSAL', message: 'Invalid file path' });
+    return { isValid: false, errors };
+  }
+
+  // Check allowed subdirectories using exact matching
+  if (pathSegments.length > 0 && !FILE_UPLOAD_CONFIG.allowedSubdirectories.includes(pathSegments[0])) {
     errors.push({ code: 'INVALID_DIRECTORY', message: 'Directory not allowed' });
+    return { isValid: false, errors };
+  }
+
+  return { 
+    isValid: true, 
+    errors: [],
+    normalizedPath 
+  };
+}
+
+function validateFileUpload(filePath, content) {
+  const pathValidation = validateFilePath(filePath);
+  if (!pathValidation.isValid) {
+    return pathValidation;
+  }
+
+  const errors = [];
+  
+  if (content === undefined || content === null) {
+    errors.push({ code: 'INVALID_CONTENT', message: 'File content is required' });
     return { isValid: false, errors };
   }
 
@@ -109,7 +138,7 @@ function validateFileUpload(filePath, content) {
     errors: [],
     sizeInBytes,
     extension,
-    normalizedPath 
+    normalizedPath: pathValidation.normalizedPath 
   };
 }
 
@@ -131,7 +160,21 @@ router.get('/read', requireAuth, requireVaultMounted, (req, res, next) => {
       return res.status(400).json({ success: false, error: { code: 'MISSING_PATH', message: 'Path query parameter required' } });
     }
 
-    const content = readFile(filePath);
+    // Validate file path to prevent path traversal
+    const pathValidation = validateFilePath(filePath);
+    if (!pathValidation.isValid) {
+      logger.warn({ path: filePath, user: req.session.userId, errors: pathValidation.errors }, 'File read rejected due to path validation failure');
+      return res.status(400).json({ 
+        success: false, 
+        error: { 
+          code: 'VALIDATION_FAILED', 
+          message: pathValidation.errors[0].message,
+          details: pathValidation.errors
+        } 
+      });
+    }
+
+    const content = readFile(pathValidation.normalizedPath);
     res.json({ success: true, data: { path: filePath, content } });
   } catch (err) {
     if (err.code === 'ENOENT') {
@@ -223,7 +266,21 @@ router.delete('/delete', requireAuth, requireVaultMounted, (req, res, next) => {
       return res.status(400).json({ success: false, error: { code: 'MISSING_PATH', message: 'Path query parameter required' } });
     }
 
-    deleteFile(filePath);
+    // Validate file path to prevent path traversal
+    const pathValidation = validateFilePath(filePath);
+    if (!pathValidation.isValid) {
+      logger.warn({ path: filePath, user: req.session.userId, errors: pathValidation.errors }, 'File delete rejected due to path validation failure');
+      return res.status(400).json({ 
+        success: false, 
+        error: { 
+          code: 'VALIDATION_FAILED', 
+          message: pathValidation.errors[0].message,
+          details: pathValidation.errors
+        } 
+      });
+    }
+
+    deleteFile(pathValidation.normalizedPath);
     logger.info({ path: filePath, user: req.session.userId }, 'File deletion successful');
     res.json({ success: true, data: { path: filePath, message: 'File deleted' } });
   } catch (err) {
@@ -262,8 +319,28 @@ router.delete('/delete', requireAuth, requireVaultMounted, (req, res, next) => {
 router.get('/list', requireAuth, requireVaultMounted, (req, res, next) => {
   try {
     const { dir } = req.query;
-    const entries = listDirectory(dir || '');
-    res.json({ success: true, data: entries });
+    const dirPath = dir || '';
+    
+    // Validate directory path to prevent path traversal
+    if (dirPath) {
+      const pathValidation = validateFilePath(dirPath);
+      if (!pathValidation.isValid) {
+        logger.warn({ path: dirPath, user: req.session.userId, errors: pathValidation.errors }, 'Directory list rejected due to path validation failure');
+        return res.status(400).json({ 
+          success: false, 
+          error: { 
+            code: 'VALIDATION_FAILED', 
+            message: pathValidation.errors[0].message,
+            details: pathValidation.errors
+          } 
+        });
+      }
+      const entries = listDirectory(pathValidation.normalizedPath);
+      res.json({ success: true, data: entries });
+    } else {
+      const entries = listDirectory('');
+      res.json({ success: true, data: entries });
+    }
   } catch (err) {
     next(err);
   }
@@ -276,7 +353,21 @@ router.get('/exists', requireAuth, requireVaultMounted, (req, res, next) => {
       return res.status(400).json({ success: false, error: { code: 'MISSING_PATH', message: 'Path query parameter required' } });
     }
 
-    res.json({ success: true, data: { path: filePath, exists: exists(filePath) } });
+    // Validate file path to prevent path traversal
+    const pathValidation = validateFilePath(filePath);
+    if (!pathValidation.isValid) {
+      logger.warn({ path: filePath, user: req.session.userId, errors: pathValidation.errors }, 'File exists check rejected due to path validation failure');
+      return res.status(400).json({ 
+        success: false, 
+        error: { 
+          code: 'VALIDATION_FAILED', 
+          message: pathValidation.errors[0].message,
+          details: pathValidation.errors
+        } 
+      });
+    }
+
+    res.json({ success: true, data: { path: filePath, exists: exists(pathValidation.normalizedPath) } });
   } catch (err) {
     next(err);
   }
