@@ -1,4 +1,5 @@
 import os
+import re
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
@@ -36,8 +37,26 @@ async def get_runtime_env(
         raise HTTPException(status_code=403, detail="Secret not allowed for this profile")
 
     env_name = request.get("env_name", "runtime.env")
+    
+    # Strict whitelist validation: only allow alphanumeric chars, dots, and hyphens
+    if not re.match(r'^[a-zA-Z0-9._-]+$', env_name):
+        raise HTTPException(status_code=400, detail="Invalid env_name: only alphanumeric characters, dots, and hyphens are allowed")
+    
+    # Remove any potential path separators for additional safety
     env_name = os.path.basename(env_name)
-    env_path = os.path.join(vault, settings.secrets_dir, env_name)
+    
+    # Construct the expected path
+    secrets_base_dir = os.path.join(vault, settings.secrets_dir)
+    env_path = os.path.join(secrets_base_dir, env_name)
+    
+    # Verify the resolved path is within the expected directory
+    try:
+        secrets_base_dir = os.path.realpath(secrets_base_dir)
+        env_path = os.path.realpath(env_path)
+        if os.path.commonpath([secrets_base_dir, env_path]) != secrets_base_dir:
+            raise HTTPException(status_code=400, detail="Access denied: path outside allowed directory")
+    except (ValueError, OSError):
+        raise HTTPException(status_code=400, detail="Invalid path")
 
     if not os.path.exists(env_path):
         raise HTTPException(status_code=404, detail="Env file not found")
