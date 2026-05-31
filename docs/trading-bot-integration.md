@@ -2,10 +2,12 @@
 
 ## Purpose
 
-This document is a step-by-step playbook for connecting an external trading bot (or any remote client) to the **OpenClaw Secret Server** running on a Raspberry Pi 5 over Tailscale. The bot will:
+This document is a step-by-step playbook for connecting an external trading bot (or any remote client) to the **OpenClaw Secret Server** running on a Linux host. The bot will:
 
 1. Retrieve runtime secrets (API keys, etc.) from the vault **without** ever seeing the private key.
-2. Request cryptographic signatures for blockchain transactions from the **Signing Agent** — again, the private key never leaves the Pi.
+2. Request cryptographic signatures for blockchain transactions from the **Signing Agent** — again, the private key never leaves the host.
+
+This guide assumes the OpenClaw Secure Vault (Node backend + VeraCrypt/LUKS mount) is already running on the Linux machine. The Secret Server is a separate Python FastAPI layer that adds remote API access and signing.
 
 ---
 
@@ -13,16 +15,16 @@ This document is a step-by-step playbook for connecting an external trading bot 
 
 | # | Requirement | How to verify |
 |---|-------------|---------------|
-| 1 | Pi is on Tailscale | `tailscale status` shows `100.x.x.x` |
-| 2 | VeraCrypt USB is mounted | `ls /mnt/securevault` shows directories |
+| 1 | Linux host is running | `uname -a` |
+| 2 | Encrypted vault is mounted | `ls /mnt/securevault` shows directories |
 | 3 | Node vault (`:3001`) is running | `curl http://localhost:3001/api/health` |
 | 4 | At least one env var exists in the Node UI | `ls /mnt/securevault/secrets/.env` |
 | 5 | Python 3.11+ installed | `python3 --version` |
-| 6 | You have `sudo` access on the Pi | `sudo whoami` |
+| 6 | You have `sudo` access | `sudo whoami` |
 
 ---
 
-## Part 1 — Install the Secret Server on the Pi
+## Part 1 — Install the Secret Server
 
 The Secret Server is **not** installed automatically by `bin/setup.sh`. It has its own installer.
 
@@ -93,7 +95,7 @@ POLY_API_SECRET=xyz789
 WALLET_ADDRESS=0x...
 ```
 
-**If this file is missing:** Open the web UI at `http://<pi-ip>:3001`, go to **Environment Variables**, and create any variable. The file will appear instantly.
+**If this file is missing:** Open the web UI at `http://localhost:3001`, go to **Environment Variables**, and create any variable. The file will appear instantly.
 
 ### Step 2.3 — Create the auth profiles file
 
@@ -179,43 +181,46 @@ sudo chmod 700 /mnt/securevault/crypto
 The systemd units already declare dependencies:
 
 ```
-tailscaled → openclaw-vault → secret-server → signing-agent
+tailscaled (optional) → openclaw-vault → secret-server → signing-agent
 ```
 
 Start them in order if they are not already running:
 
 ```bash
-# 1. Tailscale (usually already running)
-sudo systemctl start tailscaled
-
-# 2. Mount the vault
+# 1. Mount the vault
 sudo systemctl start openclaw-vault
 
-# 3. Start the secret server
+# 2. Start the secret server
 sudo systemctl start secret-server
 
-# 4. Start the signing agent
+# 3. Start the signing agent
 sudo systemctl start signing-agent
 ```
+
+> Tailscale is only required if `SECRET_SERVER_TAILSCALE_ONLY=true` (the default). If you are running locally without Tailscale, set `SECRET_SERVER_TAILSCALE_ONLY=false` and `SECRET_SERVER_HOST=127.0.0.1` in the secret-server environment before starting.
 
 ### Step 3.2 — Verify each service is active
 
 ```bash
-sudo systemctl is-active tailscaled
 sudo systemctl is-active openclaw-vault
 sudo systemctl is-active secret-server
 sudo systemctl is-active signing-agent
 ```
 
-**All four should print:** `active`
+**All three should print:** `active`
 
-### Step 3.3 — Verify Tailscale IP is detected
+### Step 3.3 — Verify the secret-server responds
 
+**If running locally (no Tailscale):**
+```bash
+curl -s http://127.0.0.1:8787/health | jq .
+```
+
+**If running over Tailscale:**
 ```bash
 curl -s http://100.x.x.x:8787/health | jq .
 ```
-
-Replace `100.x.x.x` with the Pi's Tailscale IP (`tailscale ip -4`).
+Replace `100.x.x.x` with the host's Tailscale IP (`tailscale ip -4`).
 
 **Expected output:**
 ```json
@@ -233,9 +238,7 @@ If `vault_mounted` is `false`, the vault is not mounted at `/mnt/securevault`.
 
 ## Part 4 — Test the API Endpoints
 
-Run these tests **from the Pi itself** first. Once they work, test from the remote bot machine over Tailscale.
-
-### Step 4.1 — Test secret retrieval
+### Step 4.1 — Test secret retrieval (localhost)
 
 ```bash
 export VAULT_API_KEY="sk-vault-bot-<the-key-from-step-2.3>"
@@ -287,23 +290,23 @@ curl -s -X POST http://127.0.0.1:8787/sign/polymarket \
 - `503 Signing agent unavailable` → The signing-agent socket is missing or the service is down.
 - `500 Internal server error` → The key file is missing or unreadable. Check `/mnt/securevault/crypto/polymarket.key`.
 
-### Step 4.3 — Test from the remote bot machine (over Tailscale)
+### Step 4.3 — Test from a remote machine (optional, over Tailscale)
 
-From your laptop or the bot's host:
+If the bot runs on a different machine on the same Tailscale network:
 
 ```bash
-export PI_TAILSCALE_IP="100.x.x.x"   # The Pi's Tailscale IP
+export VAULT_HOST="100.x.x.x"   # The vault host's Tailscale IP
 export VAULT_API_KEY="sk-vault-bot-..."
 
-curl -s -X POST http://$PI_TAILSCALE_IP:8787/health | jq .
+curl -s http://$VAULT_HOST:8787/health | jq .
 
-curl -s -X POST http://$PI_TAILSCALE_IP:8787/secrets/runtime-env \
+curl -s -X POST http://$VAULT_HOST:8787/secrets/runtime-env \
   -H "X-API-Key: $VAULT_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"profile":"trading-runtime"}' | jq .
 ```
 
-If this fails with `Connection refused`, Tailscale ACLs may be blocking port `8787`. Ensure the Pi's Tailscale IP is reachable (`ping 100.x.x.x`).
+If this fails with `Connection refused`, Tailscale ACLs may be blocking port `8787`, or the secret-server may be bound to `127.0.0.1` only. Ensure the host's Tailscale IP is reachable (`ping 100.x.x.x`).
 
 ---
 
@@ -334,7 +337,7 @@ class VaultClient:
 
     Usage:
         client = VaultClient(
-            base_url="http://100.x.x.x:8787",
+            base_url="http://127.0.0.1:8787",   # or Tailscale IP
             api_key="sk-vault-bot-..."
         )
 
@@ -441,7 +444,7 @@ class VaultClient:
 # ──────────────────────────────────────────────
 if __name__ == "__main__":
     client = VaultClient(
-        base_url=os.environ.get("VAULT_URL", "http://100.x.x.x:8787"),
+        base_url=os.environ.get("VAULT_URL", "http://127.0.0.1:8787"),
         api_key=os.environ["VAULT_API_KEY"],
     )
 
@@ -465,7 +468,7 @@ if __name__ == "__main__":
 
 ## Part 6 — One-Command Diagnostics Script
 
-Run this on the Pi to see the entire state at a glance:
+Run this on the vault host to see the entire state at a glance:
 
 ```bash
 #!/bin/bash
@@ -474,10 +477,6 @@ set -e
 echo "========================================"
 echo "OpenClaw Secret Server Diagnostics"
 echo "========================================"
-
-echo ""
-echo "--- Tailscale ---"
-tailscale status | head -3 || true
 
 echo ""
 echo "--- Service Status ---"
@@ -502,8 +501,7 @@ done
 
 echo ""
 echo "--- Secret Server Health ---"
-TS_IP=$(tailscale ip -4 2>/dev/null || echo "127.0.0.1")
-curl -s "http://$TS_IP:8787/health" | jq . 2>/dev/null || echo "FAILED (is secret-server running?)"
+curl -s "http://127.0.0.1:8787/health" | jq . 2>/dev/null || echo "FAILED (is secret-server running?)"
 
 echo ""
 echo "--- Signing Agent Socket ---"
@@ -528,7 +526,7 @@ sudo journalctl -u secret-server -n 50 --no-pager
 ```
 
 Common causes:
-- Tailscale IP not found → `tailscale up` not run.
+- Tailscale IP not found but `tailscale_only=true` → Either run `tailscale up` or set `SECRET_SERVER_TAILSCALE_ONLY=false`.
 - Port 8787 in use → `sudo lsof -i :8787`
 - Missing Python deps → Re-run `sudo bash deploy/install.sh`
 
@@ -573,7 +571,7 @@ The bot client in `profiles.json` must have `"can_sign": true`. Example:
 ### `404 Env file not found`
 
 The file `/mnt/securevault/secrets/.env` is missing. Fix:
-1. Open the Node vault UI (`http://<pi>:3001`)
+1. Open the Node vault UI (`http://localhost:3001`)
 2. Create any environment variable
 3. Verify: `cat /mnt/securevault/secrets/.env`
 
@@ -599,8 +597,8 @@ Before putting real funds through this system:
 - [ ] `polymarket.key` is `chmod 600` and owned by `signingagent`
 - [ ] `profiles.json` is `chmod 640` and owned by `secretserver`
 - [ ] The bot API key is a randomly generated token (not reused from anywhere else)
-- [ ] The Pi firewall blocks port `8787` from non-Tailscale interfaces
-- [ ] Swap is disabled (`sudo systemctl status dphys-swapfile` should show inactive)
+- [ ] If exposed over Tailscale, the host firewall blocks port `8787` from non-Tailscale interfaces
+- [ ] Swap is disabled or encrypted (signing agent uses `mlock` best-effort)
 - [ ] The vault auto-locks after a timeout (configure in the Node UI Settings)
 - [ ] The signing-agent service has `AmbientCapabilities=CAP_IPC_LOCK` (check with `systemctl cat signing-agent`)
 
