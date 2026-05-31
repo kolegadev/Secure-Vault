@@ -51,11 +51,20 @@ export function requireMounted() {
  * @throws {Error} If path traversal is detected
  */
 export function resolveVaultPath(relativePath) {
-  const mountPoint = getMountPoint();
-  const resolved = path.resolve(mountPoint, relativePath);
-  const normalizedMount = path.resolve(mountPoint);
+  if (typeof relativePath !== 'string') {
+    throw new Error('Path must be a string');
+  }
 
-  if (!resolved.startsWith(normalizedMount)) {
+  const mountPoint = getMountPoint();
+  const normalizedMount = path.resolve(mountPoint);
+  
+  // Ensure the relative path doesn't start with separators or contain suspicious patterns
+  const cleanPath = relativePath.replace(/^[/\\]+/, '');
+  
+  const resolved = path.resolve(normalizedMount, cleanPath);
+  
+  // Enhanced containment check
+  if (!resolved.startsWith(normalizedMount + path.sep) && resolved !== normalizedMount) {
     throw new Error('Path traversal detected: path escapes vault directory');
   }
 
