@@ -35,7 +35,7 @@ async def get_runtime_env(
     if not auth_manager.profile_allows_secret(profile_name, "runtime-env"):
         raise HTTPException(status_code=403, detail="Secret not allowed for this profile")
 
-    env_name = request.get("env_name", "runtime.env")
+    env_name = request.get("env_name", ".env")
     env_name = os.path.basename(env_name)
     env_path = os.path.join(vault, settings.secrets_dir, env_name)
 
