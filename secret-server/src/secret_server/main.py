@@ -1,5 +1,6 @@
 import logging
 import sys
+from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI, Request
@@ -34,6 +35,21 @@ def configure_logging(log_level: str) -> None:
     )
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    cfg: Settings = app.state.cfg
+    logger = structlog.get_logger()
+    if cfg.tailscale_only:
+        ts_ip = get_tailscale_ip()
+        if not ts_ip:
+            logger.error("Tailscale IP not found. Refusing to start.")
+            sys.exit(1)
+        logger.info("tailscale_ip_detected", ip=ts_ip)
+    logger.info("secret_server_starting", port=cfg.port, host=cfg.host)
+    yield
+    logger.info("secret_server_shutting_down")
+
+
 def create_app(settings_override: Settings = None) -> FastAPI:
     cfg = settings_override or settings
     configure_logging(cfg.log_level)
@@ -43,18 +59,9 @@ def create_app(settings_override: Settings = None) -> FastAPI:
         version=cfg.version,
         docs_url=None,
         redoc_url=None,
+        lifespan=lifespan,
     )
-
-    @app.on_event("startup")
-    async def startup_event() -> None:
-        logger = structlog.get_logger()
-        if cfg.tailscale_only:
-            ts_ip = get_tailscale_ip()
-            if not ts_ip:
-                logger.error("Tailscale IP not found. Refusing to start.")
-                sys.exit(1)
-            logger.info("tailscale_ip_detected", ip=ts_ip)
-        logger.info("secret_server_starting", port=cfg.port, host=cfg.host)
+    app.state.cfg = cfg
 
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:

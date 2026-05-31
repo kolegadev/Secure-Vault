@@ -29,5 +29,11 @@ dev = [
     "httpx>=0.27",
 ]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::starlette.exceptions.StarletteDeprecationWarning:fastapi.testclient",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/secret_server"]

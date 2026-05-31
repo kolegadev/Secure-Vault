@@ -3,10 +3,17 @@ import socket
 import subprocess
 from typing import Optional
 
+from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    model_config = ConfigDict(
+        env_prefix="SECRET_SERVER_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
     app_name: str = "OpenClaw Secret Server"
     version: str = "2.0.0-alpha"
     env: str = "production"
@@ -42,11 +49,6 @@ class Settings(BaseSettings):
 
     # Logging
     log_level: str = "INFO"
-
-    class Config:
-        env_prefix = "SECRET_SERVER_"
-        env_file = ".env"
-        env_file_encoding = "utf-8"
 
 
 settings = Settings()
