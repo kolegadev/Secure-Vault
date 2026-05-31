@@ -89,10 +89,10 @@ export default function SettingsView() {
     try {
       const result = await request('/vault/backup-header', {
         method: 'POST',
-        body: JSON.stringify({ outputPath: `/tmp/vault-header-backup-${Date.now()}.bin` }),
+        body: JSON.stringify({ suggestedName: `vault-header-backup-${Date.now()}` }),
       })
       if (result.success) {
-        setSuccess('Header backed up to /tmp')
+        setSuccess('Header backed up successfully')
       } else {
         setError(result.data?.message || 'Backup failed')
       }
