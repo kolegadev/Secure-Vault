@@ -1,5 +1,6 @@
 import ctypes
 import os
+import re
 import sys
 
 from eth_keys import keys
@@ -42,10 +43,35 @@ class Signer:
     """
 
     def __init__(self, vault_path: str, crypto_dir: str):
-        self.base_path = os.path.join(vault_path, crypto_dir)
+        self.base_path = os.path.realpath(os.path.join(vault_path, crypto_dir))
+
+    def _validate_key_id(self, key_id: str) -> None:
+        """Validate key_id to prevent path traversal attacks."""
+        if not key_id:
+            raise ValueError("key_id cannot be empty")
+        
+        # Allow only alphanumeric characters and hyphens
+        if not re.match(r'^[a-zA-Z0-9\-]+$', key_id):
+            raise ValueError("key_id can only contain alphanumeric characters and hyphens")
+        
+        # Additional safety check - reject any key_id containing path components
+        if '/' in key_id or '\\' in key_id or '..' in key_id:
+            raise ValueError("key_id cannot contain path separators or relative path components")
 
     def _key_path(self, key_id: str) -> str:
-        return os.path.join(self.base_path, f"{key_id}.key")
+        self._validate_key_id(key_id)
+        key_path = os.path.realpath(os.path.join(self.base_path, f"{key_id}.key"))
+        
+        # Verify the resolved path is within the crypto directory
+        try:
+            common_path = os.path.commonpath([self.base_path, key_path])
+            if common_path != self.base_path:
+                raise ValueError(f"key_id resolves to path outside crypto directory")
+        except ValueError:
+            # commonpath can raise ValueError for paths on different drives (Windows)
+            raise ValueError(f"key_id resolves to invalid path")
+        
+        return key_path
 
     def sign(self, key_id: str, payload_hash: str) -> str:
         key_path = self._key_path(key_id)
