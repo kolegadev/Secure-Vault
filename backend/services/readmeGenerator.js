@@ -4,6 +4,7 @@ import { writeFile } from './fileManager.js';
 import { getVaultSubdir, resolveVaultPath } from './vaultPaths.js';
 import path from 'path';
 import { config } from '../config/index.js';
+import { randomUUID } from 'crypto';
 
 /**
  * Generate a markdown table of environment variables.
@@ -45,21 +46,30 @@ function generateSkillsSection(skills) {
 }
 
 /**
- * Sanitize a service name for safe file path usage.
+ * Sanitize a service name for safe file path usage using whitelist approach.
  * @param {string} serviceName
  * @returns {string}
  */
 function sanitizeServiceName(serviceName) {
   if (!serviceName || typeof serviceName !== 'string') {
-    return 'unnamed-service';
+    return `unnamed-service-${randomUUID().substring(0, 8)}`;
   }
 
-  // Remove directory traversal sequences and only allow safe characters
-  return serviceName
-    .replace(/[\.\/\\]/g, '') // Remove dots, slashes, backslashes
-    .replace(/[^a-zA-Z0-9_-]/g, '_') // Replace other unsafe chars with underscores
-    .substring(0, 100) // Limit length
+  // Normalize Unicode to prevent normalization attacks
+  const normalized = serviceName.normalize('NFKC');
+  
+  // Strict whitelist: only allow ASCII letters, numbers, hyphens, underscores
+  const sanitized = normalized
+    .replace(/[^a-zA-Z0-9_-]/g, '')
+    .substring(0, 50)
     .trim();
+
+  // If sanitization resulted in empty string or unsafe patterns, use UUID
+  if (!sanitized || sanitized === '.' || sanitized === '..' || sanitized.length < 1) {
+    return `service-${randomUUID().substring(0, 8)}`;
+  }
+
+  return sanitized;
 }
 
 /**
