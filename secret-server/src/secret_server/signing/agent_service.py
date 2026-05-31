@@ -68,7 +68,7 @@ async def main() -> None:
         os.unlink(socket_path)
 
     server = await asyncio.start_unix_server(handle_client, path=socket_path)
-    os.chmod(socket_path, 0o660)
+    os.chmod(socket_path, 0o600)
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
