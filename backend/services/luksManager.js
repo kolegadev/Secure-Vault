@@ -455,62 +455,64 @@ function validatePathComponent(pathComponent) {
 }
 
 /**
- * Validate and sanitize the output path for header backup.
- * @param {string} outputPath
- * @returns {string|null} Validated path or null if invalid
+ * Generate a secure backup file path in a temporary directory.
+ * This prevents command injection by not accepting user-provided paths.
+ * @param {string} userSuggestedName - Optional user-suggested filename (sanitized)
+ * @returns {string} Secure path in temporary directory
  */
-function validateOutputPath(outputPath) {
-  // Check for shell metacharacters that could enable command injection
-  const dangerousChars = /[;&|$`<>(){}[\]\\'"]/;
-  if (dangerousChars.test(outputPath)) {
-    return null;
+function generateSecureBackupPath(userSuggestedName) {
+  // Create temp directory if it doesn't exist
+  const tempDir = '/tmp/luks-backups';
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { mode: 0o700 }); // Only owner can access
   }
 
-  // Resolve path to prevent directory traversal
-  const resolvedPath = path.resolve(outputPath);
+  // Sanitize user-suggested name to prevent any path issues
+  let sanitizedName = 'luks-header';
+  if (userSuggestedName && typeof userSuggestedName === 'string') {
+    // Only allow alphanumeric, dots, hyphens, underscores
+    const cleaned = userSuggestedName.replace(/[^a-zA-Z0-9.\-_]/g, '');
+    if (cleaned && cleaned.length > 0 && cleaned.length <= 100) {
+      sanitizedName = cleaned;
+    }
+  }
+
+  // Generate unique filename with timestamp to prevent conflicts
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `${sanitizedName}-${timestamp}.backup`;
   
-  // Only allow alphanumeric characters, dots, hyphens, underscores, and forward slashes
-  const allowedChars = /^[a-zA-Z0-9.\-_/]+$/;
-  if (!allowedChars.test(resolvedPath)) {
-    return null;
-  }
-
-  // Prevent null bytes and other control characters
-  if (resolvedPath.includes('\0') || /[\x00-\x1F\x7F]/.test(resolvedPath)) {
-    return null;
-  }
-
-  return resolvedPath;
+  return path.join(tempDir, filename);
 }
 
 /**
  * Backup the LUKS header.
- * @param {string} outputPath
- * @returns {Promise<{success: boolean, message: string}>}
+ * @param {string} userSuggestedName - Optional user-suggested filename (will be sanitized)
+ * @returns {Promise<{success: boolean, message: string, backupPath?: string}>}
  */
-export async function backupHeader(outputPath) {
+export async function backupHeader(userSuggestedName) {
   if (!deviceExists()) {
     return { success: false, message: `Device ${config.luks.devicePath} not found` };
   }
 
-  // Validate and sanitize the output path
-  const validatedPath = validateOutputPath(outputPath);
-  if (!validatedPath) {
-    return { success: false, message: 'Invalid output path: contains unsafe characters' };
-  }
+  // Generate secure backup path instead of accepting user path
+  const secureBackupPath = generateSecureBackupPath(userSuggestedName);
 
   try {
     const result = await execCommand(
       'sudo',
-      ['cryptsetup', 'luksHeaderBackup', config.luks.devicePath, '--header-backup-file', validatedPath]
+      ['cryptsetup', 'luksHeaderBackup', config.luks.devicePath, '--header-backup-file', secureBackupPath]
     );
 
     if (result.code !== 0) {
       return { success: false, message: `Header backup failed: ${result.stderr}` };
     }
 
-    logger.info({ outputPath: validatedPath }, 'LUKS header backed up');
-    return { success: true, message: 'Header backed up successfully' };
+    logger.info({ backupPath: secureBackupPath }, 'LUKS header backed up');
+    return { 
+      success: true, 
+      message: `Header backed up successfully to: ${secureBackupPath}`,
+      backupPath: secureBackupPath
+    };
   } catch (error) {
     logger.error({ error }, 'Header backup error');
     return { success: false, message: error.message };

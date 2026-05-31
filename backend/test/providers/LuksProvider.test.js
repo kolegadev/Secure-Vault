@@ -111,21 +111,31 @@ describe('LuksProvider', () => {
     assert.ok(result.message.includes('not found'));
   });
 
-  it('backupHeader validates dangerous characters in path', async () => {
+  it('backupHeader generates secure path and ignores malicious input', async () => {
     const p = new LuksProvider({
       luks: { devicePath: mockDevicePath, mountPoint: '/mnt/x', mapperName: 'x' },
     });
-    // Even though device exists, the path validation should reject bad chars
-    const result = await p.backupHeader('/tmp/test;rm -rf /');
-    assert.strictEqual(result.success, false);
-    assert.ok(result.message.includes('Invalid output path'));
+    // Now the function sanitizes the suggested name and uses secure temp directory
+    const result = await p.backupHeader('test;rm -rf /');
+    assert.strictEqual(result.success, true);
+    assert.ok(result.backupPath.startsWith('/tmp/luks-backups/'));
+    assert.ok(result.backupPath.includes('test')); // Dangerous chars should be stripped
+    assert.ok(!result.backupPath.includes(';')); // Dangerous chars should be removed
   });
 
-  it('_validateOutputPath rejects shell metacharacters', () => {
-    assert.strictEqual(provider._validateOutputPath('/safe/path.txt'), '/safe/path.txt');
-    assert.strictEqual(provider._validateOutputPath('/unsafe;cmd'), null);
-    assert.strictEqual(provider._validateOutputPath('/unsafe|cmd'), null);
-    assert.strictEqual(provider._validateOutputPath('/unsafe`cmd'), null);
+  it('_generateSecureBackupPath sanitizes suggested names', () => {
+    const p = new LuksProvider({
+      luks: { devicePath: mockDevicePath, mountPoint: '/mnt/x', mapperName: 'x' },
+    });
+    const path1 = p._generateSecureBackupPath('safe-name');
+    assert.ok(path1.includes('safe-name'));
+    assert.ok(path1.startsWith('/tmp/luks-backups/'));
+    
+    const path2 = p._generateSecureBackupPath('unsafe;name|with`bad<chars>');
+    assert.ok(path2.includes('unsafenamewithadchars')); // Dangerous chars removed
+    assert.ok(!path2.includes(';'));
+    assert.ok(!path2.includes('|'));
+    assert.ok(!path2.includes('`'));
   });
 
   it('getDeviceInfo returns empty object when device missing', async () => {
