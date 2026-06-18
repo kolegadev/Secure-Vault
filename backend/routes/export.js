@@ -15,21 +15,28 @@ router.post('/dotenv', requireAuth, requireVaultMounted, (req, res, next) => {
     const db = getDatabase();
     const { service_name } = req.body;
 
-    let sql = 'SELECT name, value, description FROM env_vars';
-    const params = [];
-
-    if (service_name) {
-      sql += ' WHERE service_name = ?';
-      params.push(service_name);
+    if (!service_name || !service_name.trim()) {
+      return res.status(400).json({ error: 'service_name is required' });
     }
 
-    sql += ' ORDER BY name';
-    const rows = db.prepare(sql).all(...params);
+    const trimmedName = service_name.trim();
+
+    const service = db.prepare('SELECT id FROM services WHERE name = ?').get(trimmedName);
+    if (!service) {
+      return res.status(404).json({ error: 'Service not found' });
+    }
+
+    const rows = db.prepare(
+      'SELECT name, value, description FROM env_vars WHERE service_name = ? ORDER BY name'
+    ).all(trimmedName);
 
     const content = rows.map(r => `# ${r.description || r.name}\n${r.name}=${r.value}`).join('\n\n') + '\n';
 
-    res.setHeader('Content-Disposition', `attachment; filename="${service_name ? service_name + '-' : ''}env"`);
+    logger.info({ service_name: trimmedName, count: rows.length }, 'Dotenv exported');
+
+    res.setHeader('Content-Disposition', `attachment; filename="${trimmedName}-env"`);
     res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Cache-Control', 'no-store');
     res.send(content);
   } catch (err) {
     next(err);
