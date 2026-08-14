@@ -121,7 +121,22 @@ export class VeraCryptProvider extends VaultProvider {
     if (this.platform === 'linux') {
       try {
         const mounts = fs.readFileSync('/proc/mounts', 'utf-8');
-        return mounts.split('\n').some(line => line.includes(mp));
+        // Only count REAL VeraCrypt mounts. Systemd's ReadWritePaths
+        // puts a bind entry like "/dev/sda2 on /mnt/securevault type
+        // ext4" in the unit's namespace even when the volume is not
+        // mounted — matching on the path alone made login report
+        // "already mounted" and skip the actual mount, leaving the
+        // vault folders empty.
+        return mounts.split('\n').some((line) => {
+          const parts = line.trim().split(/\s+/);
+          if (parts.length < 2) return false;
+          if (parts[1] !== mp) return false;
+          return (
+            parts[0].startsWith('/dev/mapper/')
+            || line.includes('fuse.veracrypt')
+            || parts[0].startsWith('veracrypt')
+          );
+        });
       } catch {
         return false;
       }
