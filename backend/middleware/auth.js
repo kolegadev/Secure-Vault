@@ -3,6 +3,17 @@ import { getDatabase } from '../db/connection.js';
 import { logger } from '../utils/logger.js';
 import { config } from '../config/index.js';
 import { VaultProviderFactory } from '../services/VaultProviderFactory.js';
+import {
+  deriveKey,
+  getOrCreateSalt,
+  migratePlaintextValues,
+} from '../services/crypto.js';
+import {
+  putSessionKey,
+  getSessionKey,
+  clearSessionKey,
+  sweepSessionKeysFromDb,
+} from '../services/sessionKeys.js';
 
 /**
  * Determine if cookies should use the secure flag.
@@ -70,6 +81,7 @@ export function destroySession(req, res) {
   if (sessionId) {
     const db = getDatabase();
     db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
+    clearSessionKey(sessionId);
     logger.info({ sessionId: redactSessionId(sessionId) }, 'Session destroyed');
   }
 
@@ -97,6 +109,19 @@ function validateSession(req) {
   }
 
   return { valid: true, sessionId };
+}
+
+/**
+ * Return the decryption key for the request's session, if held in memory.
+ * @param {import('express').Request} req
+ * @returns {Buffer|undefined}
+ */
+export function getSessionKeyForRequest(req) {
+  const sessionId = req.sessionId
+    || req.cookies?.[SESSION_COOKIE]
+    || req.headers.authorization?.replace('Bearer ', '');
+  if (!sessionId) return undefined;
+  return getSessionKey(sessionId);
 }
 
 /**
@@ -163,6 +188,23 @@ export async function loginHandler(req, res) {
 
   // Create new session after successful authentication
   const sessionId = createSession(req, res);
+
+  // Derive the field-encryption key from the verified passphrase and
+  // hold it in process memory only. Runs the one-time migration of any
+  // legacy plaintext values.
+  try {
+    const db = getDatabase();
+    const salt = getOrCreateSalt(db);
+    const key = deriveKey(passphrase, salt);
+    putSessionKey(sessionId, key);
+    const migrated = migratePlaintextValues(db, key);
+    if (migrated > 0) {
+      logger.info({ migrated }, 'Encrypted legacy plaintext env values');
+    }
+    sweepSessionKeysFromDb(db);
+  } catch (err) {
+    logger.error({ err }, 'Session key derivation failed');
+  }
 
   logger.info({ ip: req.ip, sessionId: redactSessionId(sessionId) }, 'User logged in');
 

@@ -84,3 +84,9 @@ AFTER UPDATE ON env_vars
 BEGIN
   UPDATE env_vars SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
 END;
+
+-- Settings (key/value store for crypto salt etc.)
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);

@@ -46,6 +46,22 @@ export function initializeDatabase(dbPath) {
   db.pragma('temp_store = MEMORY');
   db.pragma('cache_size = -64000'); // 64MB cache
 
+  // Harden at-rest permissions: the DB holds encrypted secret values and
+  // must not be world-readable (best-effort; WAL files inherit on next
+  // create — they are also chmodded below).
+  try {
+    fs.chmodSync(dbDir, 0o750);
+    for (const suffix of ['', '-wal', '-shm']) {
+      const candidate = targetPath + suffix;
+      if (fs.existsSync(candidate)) {
+        fs.chmodSync(candidate, 0o640);
+      }
+    }
+  } catch (err) {
+    // Non-fatal: some filesystems do not support chmod.
+    console.warn('Failed to harden database file permissions:', err.message);
+  }
+
   return db;
 }
 

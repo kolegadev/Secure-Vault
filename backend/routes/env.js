@@ -1,10 +1,11 @@
 import { Router } from 'express';
-import { requireAuth, requireVaultMounted } from '../middleware/auth.js';
+import { requireAuth, requireVaultMounted, getSessionKeyForRequest } from '../middleware/auth.js';
 import { getDatabase } from '../db/connection.js';
 import { logger } from '../utils/logger.js';
 import { writeFile, readFile, exists } from '../services/fileManager.js';
 import path from 'path';
 import { config } from '../config/index.js';
+import { encryptValue, decryptValue, isEncrypted } from '../services/crypto.js';
 
 const router = Router();
 
@@ -13,16 +14,50 @@ function redactValue(value) {
   return value.slice(0, 2) + '*'.repeat(value.length - 4) + value.slice(-2);
 }
 
+/**
+ * Prepare a stored value for the API response.
+ * reveal=true -> decrypted plaintext (falls back to raw legacy value)
+ * reveal=false -> masked, without ever decrypting ciphertext
+ */
+function displayValue(stored, key, reveal) {
+  if (!reveal) {
+    return isEncrypted(stored) ? '********' : redactValue(stored);
+  }
+  if (!key || !isEncrypted(stored)) return stored;
+  const plain = decryptValue(stored, key);
+  return plain === null ? stored : plain;
+}
+
+/**
+ * Plaintext value for internal consumers (env file sync, export).
+ * Returns the raw value when no session key is available (legacy rows
+ * only — encrypted rows cannot be read without the key).
+ */
+function plainValue(stored, key) {
+  if (!isEncrypted(stored)) return stored;
+  if (!key) return null;
+  return decryptValue(stored, key);
+}
+
 function logActivity(action, targetId, details) {
   const db = getDatabase();
   db.prepare('INSERT INTO activity_log (action, target_type, target_id, details) VALUES (?, ?, ?, ?)')
     .run(action, 'env_var', targetId, JSON.stringify(details));
 }
 
-function syncEnvFile() {
+function syncEnvFile(key) {
   const db = getDatabase();
   const vars = db.prepare('SELECT name, value FROM env_vars ORDER BY name').all();
-  const content = vars.map(v => `${v.name}=${v.value}`).join('\n') + '\n';
+  const lines = [];
+  for (const v of vars) {
+    const plain = plainValue(v.value, key);
+    if (plain === null) {
+      logger.warn({ name: v.name }, 'Skipping encrypted value in .env sync — no session key');
+      continue;
+    }
+    lines.push(`${v.name}=${plain}`);
+  }
+  const content = lines.join('\n') + '\n';
   const envPath = path.join(config.paths.envDir, '.env');
   try {
     writeFile(envPath, content);
@@ -56,11 +91,12 @@ router.get('/', requireAuth, requireVaultMounted, (req, res, next) => {
 
     const rows = db.prepare(sql).all(...params);
 
-    // Redact values unless explicitly requested
+    // Redact values unless explicitly requested (and a session key exists)
     const reveal = req.query.reveal === 'true';
+    const key = reveal ? getSessionKeyForRequest(req) : undefined;
     const result = rows.map(row => ({
       ...row,
-      value: reveal ? row.value : redactValue(row.value),
+      value: displayValue(row.value, key, reveal),
     }));
 
     res.json({ success: true, data: result });
@@ -79,11 +115,12 @@ router.get('/:id', requireAuth, requireVaultMounted, (req, res, next) => {
     }
 
     const reveal = req.query.reveal === 'true';
+    const key = reveal ? getSessionKeyForRequest(req) : undefined;
     res.json({
       success: true,
       data: {
         ...row,
-        value: reveal ? row.value : redactValue(row.value),
+        value: displayValue(row.value, key, reveal),
       },
     });
   } catch (err) {
@@ -110,12 +147,15 @@ router.post('/', requireAuth, requireVaultMounted, (req, res, next) => {
       return res.status(409).json({ success: false, error: { code: 'CONFLICT', message: `Variable '${name}' already exists` } });
     }
 
+    const key = getSessionKeyForRequest(req);
+    const storedValue = key ? encryptValue(value, key) : value;
+
     const result = db.prepare(`
       INSERT INTO env_vars (name, value, description, service_name, api_docs_url, skill_id)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(name, value, description || null, service_name || null, api_docs_url || null, skill_id || null);
+    `).run(name, storedValue, description || null, service_name || null, api_docs_url || null, skill_id || null);
 
-    syncEnvFile();
+    syncEnvFile(key);
     logActivity('CREATE', result.lastInsertRowid, { name });
     logger.info({ name, id: result.lastInsertRowid }, 'Env var created');
 
@@ -153,8 +193,9 @@ router.put('/:id', requireAuth, requireVaultMounted, (req, res, next) => {
     const updates = [];
     const params = [];
 
+    const key = getSessionKeyForRequest(req);
     if (name !== undefined) { updates.push('name = ?'); params.push(name); }
-    if (value !== undefined) { updates.push('value = ?'); params.push(value); }
+    if (value !== undefined) { updates.push('value = ?'); params.push(key ? encryptValue(value, key) : value); }
     if (description !== undefined) { updates.push('description = ?'); params.push(description); }
     if (service_name !== undefined) { updates.push('service_name = ?'); params.push(service_name); }
     if (api_docs_url !== undefined) { updates.push('api_docs_url = ?'); params.push(api_docs_url); }
@@ -167,7 +208,7 @@ router.put('/:id', requireAuth, requireVaultMounted, (req, res, next) => {
     params.push(id);
     db.prepare(`UPDATE env_vars SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
-    syncEnvFile();
+    syncEnvFile(key);
     logActivity('UPDATE', id, { name });
     logger.info({ id }, 'Env var updated');
 
@@ -188,7 +229,7 @@ router.delete('/:id', requireAuth, requireVaultMounted, (req, res, next) => {
     }
 
     db.prepare('DELETE FROM env_vars WHERE id = ?').run(id);
-    syncEnvFile();
+    syncEnvFile(getSessionKeyForRequest(req));
     logActivity('DELETE', id, { name: existing.name });
     logger.info({ id, name: existing.name }, 'Env var deleted');
 
@@ -237,7 +278,7 @@ router.post('/bulk-delete', requireAuth, requireVaultMounted, (req, res, next) =
 
     const placeholders = validIds.map(() => '?').join(',');
     const result = db.prepare(`DELETE FROM env_vars WHERE id IN (${placeholders})`).run(...validIds);
-    syncEnvFile();
+    syncEnvFile(getSessionKeyForRequest(req));
     logActivity('BULK_DELETE', null, { count: result.changes, requestedCount: validIds.length });
     logger.info({ count: result.changes, requestedCount: validIds.length }, 'Env vars bulk deleted');
 
@@ -299,14 +340,15 @@ router.post('/export', requireAuth, requireVaultMounted, (req, res, next) => {
     let filename;
     let contentType;
 
+    const key = getSessionKeyForRequest(req);
     if (format === 'json') {
       const obj = {};
-      rows.forEach(r => { obj[r.name] = r.value; });
+      rows.forEach(r => { obj[r.name] = plainValue(r.value, key) ?? r.value; });
       content = JSON.stringify(obj, null, 2);
       filename = 'env-vars.json';
       contentType = 'application/json';
     } else {
-      content = rows.map(r => `# ${r.description || r.name}\n${r.name}=${r.value}`).join('\n\n') + '\n';
+      content = rows.map(r => `# ${r.description || r.name}\n${r.name}=${plainValue(r.value, key) ?? r.value}`).join('\n\n') + '\n';
       filename = '.env';
       contentType = 'text/plain';
     }
