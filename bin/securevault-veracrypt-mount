@@ -68,6 +68,12 @@ if [[ -z "$VERACRYPT" ]]; then
 fi
 
 # === MOUNT ===
+# The systemd unit (ProtectSystem=strict + ReadWritePaths) bind-mounts the
+# mountpoint into the unit namespace, and veracrypt refuses to mount onto a
+# mountpoint that already has a mount ("Mount point is already in use").
+# Drop that bind first — best-effort, it is recreated on unit restart.
+umount -f "$MOUNTPOINT" 2>/dev/null || true
+
 # exec replaces this shell process so the password never remains in bash memory.
 # Password is read from stdin via --stdin.
 exec "$VERACRYPT" --text --non-interactive --stdin \
