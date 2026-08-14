@@ -20,7 +20,7 @@ fi
 MOUNTPOINT="$1"
 
 # Validate mount point — strict whitelist
-if [[ ! "$MOUNTPOINT" =~ ^/mnt/[a-zA-Z0-9_:-]+$ ]] \&\& [[ ! "$MOUNTPOINT" =~ ^/media/[a-zA-Z0-9_-]+/[a-zA-Z0-9_:-]+$ ]]; then
+if [[ ! "$MOUNTPOINT" =~ ^/mnt/[a-zA-Z0-9_:-]+$ ]] && [[ ! "$MOUNTPOINT" =~ ^/media/[a-zA-Z0-9_-]+/[a-zA-Z0-9_:-]+$ ]]; then
     echo "Error: Invalid mount point: $MOUNTPOINT" >&2
     exit 1
 fi
